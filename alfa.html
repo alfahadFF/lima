@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>الفا</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#faf0e8">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="شي ان ليما">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top"><div class="wrap bar"><span class="brand">الفا</span><a class="cartlink" href="index.html">المتجر</a></div></header>
+<main class="wrap" style="padding-bottom:60px">
+
+  <section id="login" class="panel" hidden style="max-width:420px;margin-inline:auto">
+    <form id="lf">
+      <div class="field"><label for="em">البريد</label><input class="in" id="em" type="email" autocomplete="username" required></div>
+      <div class="field"><label for="pw">كلمة المرور</label><input class="in" id="pw" type="password" autocomplete="current-password" required></div>
+      <button class="btn block" type="submit">دخول</button>
+    </form>
+  </section>
+
+  <section id="app" hidden>
+    <nav class="tabs">
+      <button class="chip" data-tab="products" aria-pressed="true">المنتجات</button>
+      <button class="chip" data-tab="form" aria-pressed="false" id="tabform">منتج جديد</button>
+      <button class="chip" data-tab="cats" aria-pressed="false">الفئات</button>
+      <button class="chip" id="out">خروج</button>
+    </nav>
+
+    <div id="t-products">
+      <div class="tools"><input class="in" id="q" type="search" placeholder="ابحث بالكود أو الاسم" aria-label="بحث"></div>
+      <div id="plist"></div>
+    </div>
+
+    <div id="t-form" class="panel" hidden>
+      <h2 class="h1" id="ftitle" style="margin-top:0">منتج جديد</h2>
+      <details class="import">
+        <summary>لصق بيانات من شي إن (JSON من الـ Bookmarklet)</summary>
+        <div class="field" style="margin-top:12px"><textarea class="in" id="pj" placeholder="الصق الـ JSON هنا" dir="ltr"></textarea></div>
+        <button class="btn sm ghost" id="doimport" type="button">تعبئة الحقول</button>
+      </details>
+
+      <div class="field"><label for="f-title">اسم المنتج</label><input class="in" id="f-title"></div>
+      <div class="field"><label for="f-url">رابط شي إن</label><input class="in" id="f-url" type="url" dir="ltr"></div>
+      <div class="two">
+        <div class="field"><label for="f-price">سعر شي إن</label><input class="in" id="f-price" type="number" step="0.01" min="0" inputmode="decimal"></div>
+        <div class="field"><label for="f-margin">الهامش %</label><input class="in" id="f-margin" type="number" step="0.5" min="0" inputmode="decimal" value="30"></div>
+      </div>
+      <div class="field"><label for="f-final">سعر البيع</label><input class="in" id="f-final" readonly></div>
+      <div class="two">
+        <div class="field"><label for="f-cat">الفئة</label><select class="in" id="f-cat"></select></div>
+        <div class="field"><label for="f-status">الحالة</label>
+          <select class="in" id="f-status"><option value="draft">مسودة</option><option value="published">منشور</option><option value="hidden">مخفي</option></select></div>
+      </div>
+      <div class="field"><label for="f-desc">الوصف</label><textarea class="in" id="f-desc"></textarea></div>
+      <div class="field"><label for="f-images">روابط الصور (رابط بكل سطر، الأول هو الرئيسي)</label><textarea class="in" id="f-images" dir="ltr"></textarea></div>
+      <div class="two">
+        <div class="field"><label for="f-colors">الألوان (افصل بفاصلة)</label><input class="in" id="f-colors"></div>
+        <div class="field"><label for="f-sizes">المقاسات (افصل بفاصلة)</label><input class="in" id="f-sizes"></div>
+      </div>
+      <button class="btn sm ghost" id="gen" type="button">توليد الخيارات</button>
+      <div id="vlist" style="margin:12px 0 18px"></div>
+      <div class="acts">
+        <button class="btn" id="save" type="button">حفظ</button>
+        <button class="btn ghost" id="cancel" type="button">إلغاء</button>
+        <button class="btn bad" id="del" type="button" hidden>حذف المنتج</button>
+      </div>
+    </div>
+
+    <div id="t-cats" class="panel" hidden>
+      <div class="field"><label for="cname">فئة جديدة</label><input class="in" id="cname"></div>
+      <button class="btn sm" id="addcat" type="button">إضافة</button>
+      <div id="catlist" style="margin-top:14px"></div>
+    </div>
+  </section>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script>
+const ST = { draft: 'مسودة', published: 'منشور', hidden: 'مخفي' };
+let wasIn = false, cats = [], products = [], editing = null, variants = [];
+const split = s => [...new Set(String(s || '').split(/[,،\n]+/).map(x => x.trim()).filter(Boolean))];
+
+/* ---------- الدخول ---------- */
+(async function () {
+  if (!configReady()) { $('#login').hidden = false; $('#login').innerHTML = empty('أكمل مفاتيح Supabase في ملف config.js'); return; }
+  const { data } = await sb.auth.getSession(); setAuth(data.session);
+  sb.auth.onAuthStateChange((_e, s) => setAuth(s));
+})();
+function setAuth(s) {
+  const inn = !!s;
+  $('#login').hidden = inn; $('#app').hidden = !inn;
+  if (inn && !wasIn) boot();
+  wasIn = inn;
+}
+$('#lf').addEventListener('submit', async e => {
+  e.preventDefault();
+  const { error } = await sb.auth.signInWithPassword({ email: $('#em').value.trim(), password: $('#pw').value });
+  if (error) toast('البريد أو كلمة المرور غير صحيحة');
+});
+$('#out').addEventListener('click', () => sb.auth.signOut());
+
+async function boot() { await loadCats(); await loadProducts(); resetForm(); tab('products'); }
+function tab(n) {
+  ['products', 'form', 'cats'].forEach(t => {
+    $('#t-' + t).hidden = t !== n;
+    $(`[data-tab="${t}"]`).setAttribute('aria-pressed', t === n);
+  });
+}
+$$('[data-tab]').forEach(b => b.addEventListener('click', () => {
+  if (b.dataset.tab === 'form' && !editing) resetForm();
+  tab(b.dataset.tab);
+}));
+
+/* ---------- الفئات ---------- */
+async function loadCats() {
+  const { data, error } = await sb.from('categories').select('*').order('sort_order').order('name');
+  if (error) return toast(error.message);
+  cats = data;
+  $('#f-cat').innerHTML = '<option value="">بدون فئة</option>' + cats.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  $('#catlist').innerHTML = cats.map(c => `<div class="crow"><span>${esc(c.name)}</span><button class="btn sm bad" data-delcat="${c.id}">حذف</button></div>`).join('') || empty('لا توجد فئات.');
+}
+$('#addcat').addEventListener('click', async () => {
+  const name = $('#cname').value.trim(); if (!name) return;
+  const { error } = await sb.from('categories').insert({ name, slug: 'c' + Date.now().toString(36), sort_order: cats.length });
+  if (error) return toast(error.message);
+  $('#cname').value = ''; await loadCats();
+});
+$('#catlist').addEventListener('click', async e => {
+  const b = e.target.closest('[data-delcat]'); if (!b || !confirm('حذف الفئة؟ المنتجات تبقى بدون فئة.')) return;
+  const { error } = await sb.from('categories').delete().eq('id', b.dataset.delcat);
+  if (error) return toast(error.message);
+  await loadCats();
+});
+
+/* ---------- قائمة المنتجات ---------- */
+async function loadProducts() {
+  const { data, error } = await sb.from('products')
+    .select('id,code,title,status,final_price,shein_price,source_url,product_images(url,sort_order)')
+    .order('created_at', { ascending: false });
+  if (error) return toast(error.message);
+  products = data; drawProducts();
+}
+function drawProducts() {
+  const q = $('#q').value.trim().toLowerCase();
+  const list = products.filter(p => !q || (p.code + ' ' + p.title).toLowerCase().includes(q));
+  $('#plist').innerHTML = list.map(p => {
+    const im = imgOf(p.product_images);
+    return `<div class="prow">
+      ${im ? img(im.url) : '<div class="noimg"></div>'}
+      <div>
+        <span class="tag">${esc(p.code)}</span> <b>${esc(p.title)}</b>
+        <div class="muted"><span class="pill">${ST[p.status]}</span> شراء <bdi>${money(p.shein_price)}</bdi> / بيع <bdi>${money(p.final_price)}</bdi></div>
+        <div class="acts">
+          <button class="btn sm ghost" data-edit="${p.id}">تعديل</button>
+          <button class="btn sm ghost" data-toggle="${p.id}">${p.status === 'published' ? 'إخفاء' : 'نشر'}</button>
+          ${p.source_url ? `<a class="btn sm ghost" href="${esc(p.source_url)}" target="_blank" rel="noopener">رابط شي إن</a>` : ''}
+        </div>
+      </div></div>`;
+  }).join('') || empty('لا توجد منتجات.');
+}
+$('#q').addEventListener('input', drawProducts);
+$('#plist').addEventListener('click', async e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.edit) return edit(b.dataset.edit);
+  if (b.dataset.toggle) {
+    const p = products.find(x => x.id === b.dataset.toggle);
+    const { error } = await sb.from('products').update({ status: p.status === 'published' ? 'hidden' : 'published' }).eq('id', p.id);
+    if (error) return toast(error.message);
+    loadProducts();
+  }
+});
+
+/* ---------- النموذج ---------- */
+function calcFinal() {
+  const p = parseFloat($('#f-price').value) || 0, m = parseFloat($('#f-margin').value) || 0;
+  $('#f-final').value = money(Math.round(p * (1 + m / 100) * 100) / 100);
+}
+['f-price', 'f-margin'].forEach(id => $('#' + id).addEventListener('input', calcFinal));
+
+function resetForm() {
+  editing = null; variants = [];
+  ['f-title', 'f-url', 'f-price', 'f-desc', 'f-images', 'f-colors', 'f-sizes', 'pj'].forEach(id => { $('#' + id).value = ''; });
+  $('#f-margin').value = 30; $('#f-cat').value = ''; $('#f-status').value = 'draft';
+  $('#ftitle').textContent = 'منتج جديد'; $('#tabform').textContent = 'منتج جديد'; $('#del').hidden = true;
+  renderVariants(); calcFinal();
+}
+function genVariants() {
+  const cs = split($('#f-colors').value), ss = split($('#f-sizes').value);
+  const C = cs.length ? cs : [null], S = ss.length ? ss : [null];
+  const old = new Map(variants.map(v => [(v.color || '') + '|' + (v.size || ''), v]));
+  variants = [];
+  C.forEach(c => S.forEach(s => {
+    const o = old.get((c || '') + '|' + (s || ''));
+    variants.push({ color: c, size: s, in_stock: o ? o.in_stock : true, price_override: o ? o.price_override : null });
+  }));
+  renderVariants();
+}
+function renderVariants() {
+  $('#vlist').innerHTML = variants.length ? variants.map((v, i) => `<div class="vrow">
+    <span>${esc(v.color || 'بدون لون')} / ${esc(v.size || 'بدون مقاس')}</span>
+    <input class="in" type="number" step="0.01" min="0" placeholder="سعر خاص" value="${v.price_override ?? ''}" data-vp="${i}" aria-label="سعر خاص">
+    <label class="chk"><input type="checkbox" data-vs="${i}" ${v.in_stock ? 'checked' : ''}> متوفر</label></div>`).join('')
+    : '<p class="muted">اكتب الألوان والمقاسات ثم اضغط توليد الخيارات. إذا تركتهما فارغين يُنشأ خيار واحد.</p>';
+}
+$('#gen').addEventListener('click', genVariants);
+$('#vlist').addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.vp !== undefined) variants[+t.dataset.vp].price_override = t.value === '' ? null : parseFloat(t.value);
+  if (t.dataset.vs !== undefined) variants[+t.dataset.vs].in_stock = t.checked;
+});
+
+$('#doimport').addEventListener('click', () => {
+  let j; try { j = JSON.parse($('#pj').value); } catch (e) { return toast('JSON غير صالح'); }
+  $('#f-title').value = j.title || ''; $('#f-url').value = j.source_url || '';
+  $('#f-price').value = j.price ?? ''; $('#f-desc').value = j.description || '';
+  $('#f-images').value = (j.images || []).join('\n');
+  $('#f-colors').value = (j.colors || []).join('، '); $('#f-sizes').value = (j.sizes || []).join('، ');
+  genVariants(); calcFinal(); toast('تمت التعبئة. راجع الحقول قبل الحفظ.');
+});
+
+async function edit(id) {
+  const { data: p, error } = await sb.from('products')
+    .select('*,product_images(url,sort_order),product_variants(color,size,in_stock,price_override)').eq('id', id).single();
+  if (error) return toast(error.message);
+  resetForm(); editing = id;
+  $('#f-title').value = p.title; $('#f-url').value = p.source_url || ''; $('#f-price').value = p.shein_price;
+  $('#f-margin').value = p.margin_percent; $('#f-cat').value = p.category_id || ''; $('#f-status').value = p.status;
+  $('#f-desc').value = p.description || '';
+  $('#f-images').value = p.product_images.sort((a, b) => a.sort_order - b.sort_order).map(i => i.url).join('\n');
+  variants = p.product_variants.map(v => ({ color: v.color, size: v.size, in_stock: v.in_stock, price_override: v.price_override }));
+  $('#f-colors').value = [...new Set(variants.map(v => v.color).filter(Boolean))].join('، ');
+  $('#f-sizes').value = [...new Set(variants.map(v => v.size).filter(Boolean))].join('، ');
+  renderVariants(); calcFinal();
+  $('#ftitle').textContent = 'تعديل ' + p.code; $('#tabform').textContent = 'تعديل ' + p.code; $('#del').hidden = false;
+  tab('form'); window.scrollTo(0, 0);
+}
+
+async function save() {
+  const title = $('#f-title').value.trim(), price = parseFloat($('#f-price').value);
+  if (!title || !(price >= 0)) return toast('الاسم والسعر مطلوبان');
+  genVariants();
+  const row = {
+    title, source_url: $('#f-url').value.trim() || null, shein_price: price,
+    margin_percent: parseFloat($('#f-margin').value) || 0, category_id: $('#f-cat').value || null,
+    description: $('#f-desc').value.trim() || null, status: $('#f-status').value
+  };
+  const btn = $('#save'); btn.disabled = true;
+  try {
+    const q = editing ? sb.from('products').update(row).eq('id', editing) : sb.from('products').insert(row);
+    const { data, error } = await q.select('id,code').single();
+    if (error) throw error;
+    const id = data.id;
+    let r = await sb.from('product_images').delete().eq('product_id', id); if (r.error) throw r.error;
+    r = await sb.from('product_variants').delete().eq('product_id', id); if (r.error) throw r.error;
+    const imgs = $('#f-images').value.split('\n').map(x => x.trim()).filter(Boolean);
+    if (imgs.length) { r = await sb.from('product_images').insert(imgs.map((url, i) => ({ product_id: id, url, sort_order: i }))); if (r.error) throw r.error; }
+    r = await sb.from('product_variants').insert(variants.map(v => ({ product_id: id, color: v.color, size: v.size, in_stock: v.in_stock, price_override: v.price_override })));
+    if (r.error) throw r.error;
+    toast('تم الحفظ. الكود: ' + data.code);
+    await loadProducts(); resetForm(); tab('products');
+  } catch (e) { toast(e.message || 'تعذر الحفظ'); }
+  finally { btn.disabled = false; }
+}
+$('#save').addEventListener('click', save);
+$('#cancel').addEventListener('click', () => { resetForm(); tab('products'); });
+$('#del').addEventListener('click', async () => {
+  if (!editing || !confirm('حذف المنتج نهائياً؟')) return;
+  const { error } = await sb.from('products').delete().eq('id', editing);
+  if (error) return toast(error.message);
+  await loadProducts(); resetForm(); tab('products');
+});
+</script>
+</body>
+</html>

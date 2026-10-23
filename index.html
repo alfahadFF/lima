@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>شي ان ليما ستور</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#faf0e8">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="شي ان ليما">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top" id="hdr"></header>
+<main class="wrap">
+  <p class="note" id="note" hidden></p>
+  <div class="tools">
+    <input class="in" id="q" type="search" placeholder="ابحث بالاسم أو بالكود" aria-label="بحث">
+    <div class="chips" id="chips" role="group" aria-label="الفئات"></div>
+  </div>
+  <div class="grid" id="grid"></div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script>
+(async function () {
+  renderHeader();
+  document.title = CONFIG.STORE_NAME;
+  const grid = $('#grid');
+  if (CONFIG.DELIVERY_NOTE) { const n = $('#note'); n.textContent = CONFIG.DELIVERY_NOTE; n.hidden = false; }
+  if (!configReady()) { grid.innerHTML = empty('أكمل مفاتيح Supabase في ملف config.js'); return; }
+
+  const [p, c] = await Promise.all([
+    sb.from('products').select('id,code,title,final_price,category_id,product_images(url,sort_order)')
+      .eq('status', 'published').order('created_at', { ascending: false }).limit(300),
+    sb.from('categories').select('id,name').order('sort_order').order('name')
+  ]);
+  if (p.error || c.error) { grid.innerHTML = empty('تعذر تحميل المنتجات. حاول مرة ثانية.'); return; }
+
+  const all = p.data, cats = c.data;
+  let cat = '', q = '';
+
+  function chips() {
+    const used = new Set(all.map(x => x.category_id));
+    const list = cats.filter(x => used.has(x.id));
+    $('#chips').innerHTML = list.length
+      ? [{ id: '', name: 'الكل' }, ...list].map(x => `<button class="chip" data-cat="${x.id}" aria-pressed="${x.id === cat}">${esc(x.name)}</button>`).join('')
+      : '';
+  }
+  function render() {
+    const list = all.filter(x => (!cat || x.category_id === cat) && (!q || (x.title + ' ' + x.code).toLowerCase().includes(q)));
+    grid.innerHTML = list.length ? list.map(x => {
+      const im = imgOf(x.product_images);
+      return `<a class="item" href="product.html?c=${encodeURIComponent(x.code)}">
+        <div class="ph">${img(im && im.url, x.title)}<span class="tag">${esc(x.code)}</span></div>
+        <h3>${esc(x.title)}</h3><p class="pr"><bdi>${money(x.final_price)}</bdi></p></a>`;
+    }).join('') : empty(all.length ? 'لا توجد منتجات مطابقة.' : 'لا توجد منتجات بعد.');
+  }
+  $('#chips').addEventListener('click', e => {
+    const b = e.target.closest('[data-cat]'); if (!b) return;
+    cat = b.dataset.cat; chips(); render();
+  });
+  $('#q').addEventListener('input', e => { q = e.target.value.trim().toLowerCase(); render(); });
+  chips(); render();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>المنتج</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#faf0e8">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="شي ان ليما">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top" id="hdr"></header>
+<main class="wrap"><div class="pdp" id="pdp"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script>
+(async function () {
+  renderHeader();
+  const root = $('#pdp');
+  if (!configReady()) { root.innerHTML = empty('أكمل مفاتيح Supabase في ملف config.js'); return; }
+  const code = new URLSearchParams(location.search).get('c');
+  if (!code) { root.innerHTML = empty('المنتج غير محدد.'); return; }
+
+  const { data: p, error } = await sb.from('products')
+    .select('id,code,title,description,final_price,product_images(url,sort_order),product_variants(id,color,size,price_override,in_stock)')
+    .eq('code', code).maybeSingle();
+  if (error || !p) { root.innerHTML = empty('المنتج غير موجود أو غير متاح حالياً.'); return; }
+
+  document.title = p.title + ' | ' + CONFIG.STORE_NAME;
+  const imgs = (p.product_images || []).slice().sort((a, b) => a.sort_order - b.sort_order).map(i => i.url);
+  const V = p.product_variants || [];
+  const uniq = a => [...new Set(a)];
+  const colors = uniq(V.map(v => v.color).filter(Boolean));
+  const sizes = uniq(V.map(v => v.size).filter(Boolean));
+  const sel = { color: colors.length === 1 ? colors[0] : null, size: sizes.length === 1 ? sizes[0] : null };
+  let qty = 1, shown = 0;
+
+  const current = () => V.find(v => (v.color || null) === sel.color && (v.size || null) === sel.size);
+  const avail = (kind, val) => V.some(v => v.in_stock && v[kind] === val &&
+    (kind === 'color' ? (!sel.size || v.size === sel.size) : (!sel.color || v.color === sel.color)));
+
+  function group(title, kind, list) {
+    if (!list.length) return '';
+    return `<div class="opt"><h4>${title}</h4><div class="opts">${list.map(x =>
+      `<button class="opt-b" data-${kind}="${esc(x)}" aria-pressed="${sel[kind] === x}" ${avail(kind, x) ? '' : 'disabled'}>${esc(x)}</button>`).join('')}</div></div>`;
+  }
+
+  function draw() {
+    const v = current();
+    const ready = !!(v && v.in_stock);
+    const price = v ? (v.price_override ?? p.final_price) : p.final_price;
+    const needs = (colors.length && !sel.color) ? 'اختر اللون' : (sizes.length && !sel.size) ? 'اختر المقاس' : '';
+    const msg = needs || (!ready ? 'هذا الخيار غير متوفر حالياً' : '');
+    root.innerHTML = `
+      <div class="gallery">
+        <div class="main">${img(imgs[shown], p.title)}</div>
+        ${imgs.length > 1 ? `<div class="thumbs">${imgs.map((u, i) => `<button data-img="${i}" aria-pressed="${i === shown}" aria-label="صورة ${i + 1}">${img(u)}</button>`).join('')}</div>` : ''}
+      </div>
+      <div class="info">
+        <span class="tag">${esc(p.code)}</span>
+        <h1>${esc(p.title)}</h1>
+        <p class="price"><bdi>${money(price)}</bdi></p>
+        ${group('اللون', 'color', colors)}
+        ${group('المقاس', 'size', sizes)}
+        <p class="hint" role="status">${esc(msg)}</p>
+        ${p.description ? `<p class="desc">${esc(p.description)}</p>` : ''}
+      </div>
+      <div class="dock"><div class="wrap dockin">
+        <div class="stepper"><button data-q="1" aria-label="زيادة">+</button><span>${qty}</span><button data-q="-1" aria-label="نقصان">−</button></div>
+        <button class="btn ghost" data-add ${ready ? '' : 'disabled'}>أضف للسلة</button>
+        <button class="btn wa" data-wa ${ready ? '' : 'disabled'}>اطلب عبر واتساب</button>
+      </div></div>`;
+  }
+
+  const item = () => {
+    const v = current();
+    return { variant_id: v.id, product_id: p.id, code: p.code, title: p.title, color: v.color, size: v.size, qty,
+      price: v.price_override ?? p.final_price, image: imgs[0] || '' };
+  };
+
+  root.addEventListener('click', e => {
+    const t = e.target.closest('button'); if (!t || t.disabled) return;
+    if (t.dataset.color !== undefined) { sel.color = sel.color === t.dataset.color ? null : t.dataset.color; draw(); }
+    else if (t.dataset.size !== undefined) { sel.size = sel.size === t.dataset.size ? null : t.dataset.size; draw(); }
+    else if (t.dataset.img !== undefined) { shown = +t.dataset.img; draw(); }
+    else if (t.dataset.q) { qty = Math.min(20, Math.max(1, qty + +t.dataset.q)); draw(); }
+    else if (t.dataset.add !== undefined) { Cart.add(item()); toast('أُضيف إلى السلة'); }
+    else if (t.dataset.wa !== undefined) { location.href = buildWhatsAppLink([item()]); }
+  });
+  draw();
+})();
+</script>
+</body>
+</html>
