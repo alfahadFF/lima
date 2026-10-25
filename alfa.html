@@ -46,6 +46,13 @@
     <div id="t-form" class="panel" hidden>
       <h2 class="h1" id="ftitle" style="margin-top:0">منتج جديد</h2>
       <details class="import" open>
+        <summary>استيراد من CJ Dropshipping</summary>
+        <div class="field" style="margin-top:12px"><input class="in" id="cjq" type="search" placeholder="ابحث بالإنجليزي، مثل: summer dress" dir="ltr"></div>
+        <button class="btn sm" id="cjgo" type="button">بحث</button>
+        <div id="cjres" style="margin-top:12px"></div>
+        <p class="muted">الأسعار بالدولار. اسم المنتج بيجي بالإنجليزي، عدّله للعربي قبل النشر.</p>
+      </details>
+      <details class="import">
         <summary>لصق رابط شي إن أو نص المشاركة</summary>
         <div class="field" style="margin-top:12px"><textarea class="in" id="pl" placeholder="الصق رابط المنتج أو نص المشاركة من تطبيق شي إن" dir="ltr"></textarea></div>
         <button class="btn sm ghost" id="doshare" type="button">استخراج الرابط والاسم</button>
@@ -58,7 +65,7 @@
       </details>
 
       <div class="field"><label for="f-title">اسم المنتج</label><input class="in" id="f-title"></div>
-      <div class="field"><label for="f-url">رابط شي إن</label><input class="in" id="f-url" type="url" dir="ltr"></div>
+      <div class="field"><label for="f-url">رابط المصدر (أو كود cj:)</label><input class="in" id="f-url" type="url" dir="ltr"></div>
       <div class="two">
         <div class="field"><label for="f-price">سعر شي إن</label><input class="in" id="f-price" type="number" step="0.01" min="0" inputmode="decimal"></div>
         <div class="field"><label for="f-margin">الهامش %</label><input class="in" id="f-margin" type="number" step="0.5" min="0" inputmode="decimal" value="30"></div>
@@ -169,10 +176,11 @@ function drawProducts() {
       <div>
         <span class="tag">${esc(p.code)}</span> <b>${esc(p.title)}</b>
         <div class="muted"><span class="pill">${ST[p.status]}</span> شراء <bdi>${money(p.shein_price)}</bdi> / بيع <bdi>${money(p.final_price)}</bdi></div>
+        ${p.source_url && !/^https?:/.test(p.source_url) ? `<div class="muted" dir="ltr">${esc(p.source_url)}</div>` : ''}
         <div class="acts">
           <button class="btn sm ghost" data-edit="${p.id}">تعديل</button>
           <button class="btn sm ghost" data-toggle="${p.id}">${p.status === 'published' ? 'إخفاء' : 'نشر'}</button>
-          ${p.source_url ? `<a class="btn sm ghost" href="${esc(p.source_url)}" target="_blank" rel="noopener">رابط شي إن</a>` : ''}
+          ${/^https?:/.test(p.source_url || '') ? `<a class="btn sm ghost" href="${esc(p.source_url)}" target="_blank" rel="noopener">رابط المصدر</a>` : ''}
         </div>
       </div></div>`;
   }).join('') || empty('لا توجد منتجات.');
@@ -196,8 +204,11 @@ function calcFinal() {
 }
 ['f-price', 'f-margin'].forEach(id => $('#' + id).addEventListener('input', calcFinal));
 
+let fieldsDirty = false;
+['f-colors', 'f-sizes'].forEach(id => $('#' + id).addEventListener('input', () => { fieldsDirty = true; }));
+
 function resetForm() {
-  editing = null; variants = [];
+  editing = null; variants = []; fieldsDirty = false;
   ['f-title', 'f-url', 'f-price', 'f-desc', 'f-images', 'f-colors', 'f-sizes', 'pj', 'pl'].forEach(id => { $('#' + id).value = ''; });
   $('#f-margin').value = 30; $('#f-cat').value = ''; $('#f-status').value = 'draft';
   $('#ftitle').textContent = 'منتج جديد'; $('#tabform').textContent = 'منتج جديد'; $('#del').hidden = true;
@@ -212,6 +223,7 @@ function genVariants() {
     const o = old.get((c || '') + '|' + (s || ''));
     variants.push({ color: c, size: s, in_stock: o ? o.in_stock : true, price_override: o ? o.price_override : null });
   }));
+  fieldsDirty = false;
   renderVariants();
 }
 function renderVariants() {
@@ -265,6 +277,66 @@ $('#doshare').addEventListener('click', () => {
   toast('تم استخراج الرابط والاسم. اكتب السعر وأضف الصور.');
 });
 
+
+/* ---------- استيراد من CJ (عبر دالة Netlify الآمنة) ---------- */
+async function cj(params) {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) throw new Error('سجّل الدخول أولاً');
+  const r = await fetch('/.netlify/functions/cj?' + new URLSearchParams(params), { headers: { Authorization: 'Bearer ' + session.access_token } });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || ('خطأ ' + r.status));
+  return j;
+}
+const priceText = s => /^[\d.]+$/.test(String(s)) ? money(s) : CONFIG.CURRENCY + s;
+async function cjSearch(page) {
+  const q = $('#cjq').value.trim(); if (!q) return toast('اكتب كلمة البحث');
+  $('#cjres').innerHTML = '<p class="muted">جاري البحث...</p>';
+  try {
+    const d = await cj({ action: 'search', q, page });
+    if (!d.items.length) { $('#cjres').innerHTML = empty('لا توجد نتائج.'); return; }
+    $('#cjres').innerHTML = d.items.map(p => `<div class="prow">
+      ${p.image ? img(p.image) : '<div class="noimg"></div>'}
+      <div><b>${esc(p.name)}</b>
+        <div class="muted"><bdi>${esc(priceText(p.price))}</bdi> | المخزون: ${p.stock ?? '؟'}${p.freeShipping ? ' | شحن مجاني' : ''}</div>
+        <div class="acts"><button class="btn sm" data-cjpid="${esc(p.id)}" type="button">استيراد</button></div></div></div>`).join('') +
+      `<div class="acts" style="justify-content:center;margin-top:12px">
+        <button class="btn sm ghost" data-cjpage="${page - 1}" type="button" ${page <= 1 ? 'disabled' : ''}>السابق</button>
+        <span class="muted">صفحة ${page} من ${d.totalPages || 1}</span>
+        <button class="btn sm ghost" data-cjpage="${page + 1}" type="button" ${page >= (d.totalPages || 1) ? 'disabled' : ''}>التالي</button></div>`;
+  } catch (e) { $('#cjres').innerHTML = empty(e.message); }
+}
+async function cjImport(pid, btn) {
+  if (editing) return toast('أنهِ تعديل المنتج الحالي أولاً');
+  btn.disabled = true; const t = btn.textContent; btn.textContent = 'جاري الاستيراد...';
+  try {
+    const p = await cj({ action: 'product', pid });
+    const url = 'cj:' + (p.sku || pid);
+    const dup = products.find(x => x.source_url === url);
+    if (dup) return toast('هذا المنتج موجود مسبقاً. الكود: ' + dup.code);
+    resetForm();
+    const margin = parseFloat($('#f-margin').value) || 0, base = p.price;
+    $('#f-title').value = p.name || ''; $('#f-url').value = url; $('#f-desc').value = p.description || '';
+    $('#f-price').value = base ?? ''; $('#f-images').value = (p.images || []).join('\n');
+    variants = (p.variants || []).map(v => ({
+      color: v.color, size: v.size, in_stock: v.stock == null ? true : v.stock > 0,
+      price_override: (v.price != null && base != null && v.price - base > 0.005) ? Math.round(v.price * (1 + margin / 100) * 100) / 100 : null
+    }));
+    $('#f-colors').value = [...new Set(variants.map(v => v.color).filter(Boolean))].join('، ');
+    $('#f-sizes').value = [...new Set(variants.map(v => v.size).filter(Boolean))].join('، ');
+    fieldsDirty = false; renderVariants(); calcFinal();
+    toast(p.stockKnown ? 'تم الاستيراد. راجع الحقول قبل الحفظ.' : 'تم الاستيراد. المخزون لكل خيار غير مؤكد، تحقق منه بـ CJ.');
+    $('#f-title').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } catch (e) { toast(e.message); }
+  finally { btn.disabled = false; btn.textContent = t; }
+}
+$('#cjgo').addEventListener('click', () => cjSearch(1));
+$('#cjq').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); cjSearch(1); } });
+$('#cjres').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || b.disabled) return;
+  if (b.dataset.cjpid) cjImport(b.dataset.cjpid, b);
+  else if (b.dataset.cjpage) cjSearch(+b.dataset.cjpage);
+});
+
 async function edit(id) {
   const { data: p, error } = await sb.from('products')
     .select('*,product_images(url,sort_order),product_variants(color,size,in_stock,price_override)').eq('id', id).single();
@@ -285,7 +357,7 @@ async function edit(id) {
 async function save() {
   const title = $('#f-title').value.trim(), price = parseFloat($('#f-price').value);
   if (!title || !(price >= 0)) return toast('الاسم والسعر مطلوبان');
-  genVariants();
+  if (fieldsDirty || !variants.length) genVariants();
   const row = {
     title, source_url: $('#f-url').value.trim() || null, shein_price: price,
     margin_percent: parseFloat($('#f-margin').value) || 0, category_id: $('#f-cat').value || null,

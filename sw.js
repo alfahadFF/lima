@@ -1,5 +1,5 @@
 // sw.js - تخزين مؤقت بسيط: الشبكة أولاً، ثم النسخة المخزنة إذا انقطع الاتصال
-const V = 'lymar-v2';
+const V = 'lymar-v3';
 const SHELL = ['index.html', 'product.html', 'cart.html', 'offline.html', 'style.css', 'app.js', 'config.js',
   'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/logo-mark.png'];
 
@@ -12,6 +12,7 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const req = e.request, url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== location.origin) return;   // Supabase والخطوط والصور الخارجية: بدون تدخل
+  if (url.pathname.startsWith('/.netlify/')) return;                    // ردود دوال Netlify ما بتنخزّن
   if (url.pathname.endsWith('/alfa.html')) return;                      // الأدمن ما بينخزن
   e.respondWith(
     fetch(req).then(res => {
