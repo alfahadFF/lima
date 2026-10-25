@@ -248,7 +248,14 @@ $('#doimport').addEventListener('click', () => {
   $('#f-price').value = j.price ?? ''; $('#f-desc').value = j.description || '';
   $('#f-images').value = (j.images || []).join('\n');
   $('#f-colors').value = (j.colors || []).join('، '); $('#f-sizes').value = (j.sizes || []).join('، ');
-  genVariants(); calcFinal(); toast('تمت التعبئة. راجع الحقول قبل الحفظ.');
+  genVariants();
+  const out = new Set(j.soldOut || []);
+  variants.forEach(v => { if (v.size && out.has(v.size)) v.in_stock = false; });
+  renderVariants(); calcFinal();
+  const cur = String(j.currency || '').toUpperCase();
+  toast(cur && cur !== 'USD'
+    ? 'السعر بعملة ' + cur + ' وليس بالدولار. حوّله قبل الحفظ.'
+    : 'تمت التعبئة. راجع الحقول قبل الحفظ.');
 });
 
 
