@@ -176,10 +176,11 @@ function drawProducts() {
       <div>
         <span class="tag">${esc(p.code)}</span> <b>${esc(p.title)}</b>
         <div class="muted"><span class="pill">${ST[p.status]}</span> شراء <bdi>${money(p.shein_price)}</bdi> / بيع <bdi>${money(p.final_price)}</bdi></div>
-        ${p.source_url && !/^https?:/.test(p.source_url) ? `<div class="muted" dir="ltr">${esc(p.source_url)}</div>` : ''}
+        ${p.source_url && !/^https?:/.test(p.source_url) ? `<div class="muted">المصدر: ${/^cj:/.test(p.source_url) ? 'CJ Dropshipping' : 'يدوي'} | SKU: <bdi dir="ltr">${esc(p.source_url.replace(/^cj:/, ''))}</bdi></div>` : ''}
         <div class="acts">
           <button class="btn sm ghost" data-edit="${p.id}">تعديل</button>
           <button class="btn sm ghost" data-toggle="${p.id}">${p.status === 'published' ? 'إخفاء' : 'نشر'}</button>
+          ${p.source_url && !/^https?:/.test(p.source_url) ? `<button class="btn sm ghost" data-copy="${esc(p.source_url.replace(/^cj:/, ''))}">نسخ SKU</button>` : ''}
           ${/^https?:/.test(p.source_url || '') ? `<a class="btn sm ghost" href="${esc(p.source_url)}" target="_blank" rel="noopener">رابط المصدر</a>` : ''}
         </div>
       </div></div>`;
@@ -188,6 +189,7 @@ function drawProducts() {
 $('#q').addEventListener('input', drawProducts);
 $('#plist').addEventListener('click', async e => {
   const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.copy !== undefined) return copyText(b.dataset.copy);
   if (b.dataset.edit) return edit(b.dataset.edit);
   if (b.dataset.toggle) {
     const p = products.find(x => x.id === b.dataset.toggle);
@@ -287,6 +289,10 @@ async function cj(params) {
   if (!r.ok) throw new Error(j.error || ('خطأ ' + r.status));
   return j;
 }
+async function copyText(t) {
+  try { await navigator.clipboard.writeText(t); toast('تم نسخ الكود: ' + t); }
+  catch (e) { window.prompt('انسخ الكود:', t); }
+}
 const priceText = s => /^[\d.]+$/.test(String(s)) ? money(s) : CONFIG.CURRENCY + s;
 async function cjSearch(page) {
   const q = $('#cjq').value.trim(); if (!q) return toast('اكتب كلمة البحث');
@@ -298,7 +304,10 @@ async function cjSearch(page) {
       ${p.image ? img(p.image) : '<div class="noimg"></div>'}
       <div><b>${esc(p.name)}</b>
         <div class="muted"><bdi>${esc(priceText(p.price))}</bdi> | المخزون: ${p.stock ?? '؟'}${p.freeShipping ? ' | شحن مجاني' : ''}</div>
-        <div class="acts"><button class="btn sm" data-cjpid="${esc(p.id)}" type="button">استيراد</button></div></div></div>`).join('') +
+        <div class="muted">المصدر: CJ Dropshipping | المورد: ${esc(p.supplier || 'غير معلن')}${p.category ? ' | ' + esc(p.category) : ''}</div>
+        <div class="muted">SKU: <bdi dir="ltr">${esc(p.sku || '')}</bdi></div>
+        <div class="acts"><button class="btn sm" data-cjpid="${esc(p.id)}" type="button">استيراد</button>
+          <button class="btn sm ghost" data-copy="${esc(p.sku || '')}" type="button">نسخ SKU</button></div></div></div>`).join('') +
       `<div class="acts" style="justify-content:center;margin-top:12px">
         <button class="btn sm ghost" data-cjpage="${page - 1}" type="button" ${page <= 1 ? 'disabled' : ''}>السابق</button>
         <span class="muted">صفحة ${page} من ${d.totalPages || 1}</span>
@@ -324,7 +333,7 @@ async function cjImport(pid, btn) {
     $('#f-colors').value = [...new Set(variants.map(v => v.color).filter(Boolean))].join('، ');
     $('#f-sizes').value = [...new Set(variants.map(v => v.size).filter(Boolean))].join('، ');
     fieldsDirty = false; renderVariants(); calcFinal();
-    toast(p.stockKnown ? 'تم الاستيراد. راجع الحقول قبل الحفظ.' : 'تم الاستيراد. المخزون لكل خيار غير مؤكد، تحقق منه بـ CJ.');
+    toast((p.stockKnown ? 'تم الاستيراد.' : 'تم الاستيراد. المخزون لكل خيار غير مؤكد، تحقق منه بـ CJ.') + ' المصدر: CJ، المورد: ' + (p.supplier || 'غير معلن'));
     $('#f-title').scrollIntoView({ behavior: 'smooth', block: 'center' });
   } catch (e) { toast(e.message); }
   finally { btn.disabled = false; btn.textContent = t; }
@@ -333,7 +342,8 @@ $('#cjgo').addEventListener('click', () => cjSearch(1));
 $('#cjq').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); cjSearch(1); } });
 $('#cjres').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b || b.disabled) return;
-  if (b.dataset.cjpid) cjImport(b.dataset.cjpid, b);
+  if (b.dataset.copy !== undefined) copyText(b.dataset.copy);
+  else if (b.dataset.cjpid) cjImport(b.dataset.cjpid, b);
   else if (b.dataset.cjpage) cjSearch(+b.dataset.cjpage);
 });
 
