@@ -64,7 +64,8 @@ function search(data) {
   const out = [];
   (data.content || []).forEach(c => (c.productList || []).forEach(p => out.push({
     id: p.id, sku: p.sku || p.spu, name: p.nameEn, image: p.bigImage,
-    price: p.nowPrice || p.sellPrice, stock: p.warehouseInventoryNum ?? null, freeShipping: p.addMarkStatus === 1
+    price: p.nowPrice || p.sellPrice, stock: p.warehouseInventoryNum ?? null, freeShipping: p.addMarkStatus === 1,
+    supplier: p.supplierName || '', category: p.threeCategoryName || p.twoCategoryName || p.oneCategoryName || ''
   })));
   return { items: out, page: data.pageNumber, totalPages: data.totalPages, total: data.totalRecords };
 }
@@ -97,7 +98,7 @@ function product(p) {
   const imgs = [...new Set([].concat(p.productImageSet || [], p.bigImage ? [p.bigImage] : []))].slice(0, 10);
   const desc = String(p.description || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 1200);
   return {
-    pid: p.pid, sku: p.productSku, name: p.productNameEn, description: desc, images: imgs,
+    pid: p.pid, sku: p.productSku, supplier: p.supplierName || '', name: p.productNameEn, description: desc, images: imgs,
     options: p.productKeyEn || '', price: prices.length ? Math.min(...prices) : num(p.sellPrice), variants: vs,
     stockKnown: vs.length > 0 && vs.every(v => v.stock != null)
   };
@@ -113,7 +114,10 @@ exports.handler = async (event) => {
       const kw = String(q.q || '').trim().slice(0, 100);
       if (!kw) return reply(400, { error: 'اكتب كلمة البحث' });
       const page = Math.min(1000, Math.max(1, parseInt(q.page, 10) || 1));
-      return reply(200, search(await cjGet('/product/listV2', { page, size: 20, keyWord: kw })));
+      let d;
+      try { d = await cjGet('/product/listV2', { page, size: 20, keyWord: kw, features: 'enable_category' }); }  // الفئة بتنرجع فقط مع هالخيار
+      catch (e) { d = await cjGet('/product/listV2', { page, size: 20, keyWord: kw }); }
+      return reply(200, search(d));
     }
     if (q.action === 'product') {
       if (!/^[\w-]{6,64}$/.test(q.pid || '')) return reply(400, { error: 'معرّف المنتج غير صالح' });
