@@ -4,7 +4,7 @@ window.CONFIG = {
   SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd2Ym9nZnlmbWtvaGVwbXVrcW13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIxODU3NDksImV4cCI6MjEwNzc2MTc0OX0.A-84w91IS7XZbNlWRRBdXCpoMJFgcfGP8LKYdJqSNV0",
   WHATSAPP_NUMBER: "963998747936", // رقمك اللي بيستقبل الطلبات، بصيغة دولية بدون + أو 00
   CURRENCY: "$",
-  STORE_NAME: "شي ان ليما ستور",
+  STORE_NAME: "شي ان ليمار ستور",
   DELIVERY_NOTE: "", // مثال: مدة التوصيل المتوقعة. اتركه فارغاً لإخفائه
   CART_NOTE: "السعر النهائي وتكلفة الشحن نؤكدها معك على واتساب."
 };

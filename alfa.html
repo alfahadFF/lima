@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="شي ان ليما">
+<meta name="apple-mobile-web-app-title" content="شي ان ليمار">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="stylesheet" href="style.css">
 </head>
@@ -45,6 +45,12 @@
 
     <div id="t-form" class="panel" hidden>
       <h2 class="h1" id="ftitle" style="margin-top:0">منتج جديد</h2>
+      <details class="import" open>
+        <summary>لصق رابط شي إن أو نص المشاركة</summary>
+        <div class="field" style="margin-top:12px"><textarea class="in" id="pl" placeholder="الصق رابط المنتج أو نص المشاركة من تطبيق شي إن" dir="ltr"></textarea></div>
+        <button class="btn sm ghost" id="doshare" type="button">استخراج الرابط والاسم</button>
+        <p class="muted">بيستخرج الرابط النظيف والاسم بس. السعر والصور والخيارات بتعبّيها بنفسك.</p>
+      </details>
       <details class="import">
         <summary>لصق بيانات من شي إن (JSON من الـ Bookmarklet)</summary>
         <div class="field" style="margin-top:12px"><textarea class="in" id="pj" placeholder="الصق الـ JSON هنا" dir="ltr"></textarea></div>
@@ -192,7 +198,7 @@ function calcFinal() {
 
 function resetForm() {
   editing = null; variants = [];
-  ['f-title', 'f-url', 'f-price', 'f-desc', 'f-images', 'f-colors', 'f-sizes', 'pj'].forEach(id => { $('#' + id).value = ''; });
+  ['f-title', 'f-url', 'f-price', 'f-desc', 'f-images', 'f-colors', 'f-sizes', 'pj', 'pl'].forEach(id => { $('#' + id).value = ''; });
   $('#f-margin').value = 30; $('#f-cat').value = ''; $('#f-status').value = 'draft';
   $('#ftitle').textContent = 'منتج جديد'; $('#tabform').textContent = 'منتج جديد'; $('#del').hidden = true;
   renderVariants(); calcFinal();
@@ -229,6 +235,34 @@ $('#doimport').addEventListener('click', () => {
   $('#f-images').value = (j.images || []).join('\n');
   $('#f-colors').value = (j.colors || []).join('، '); $('#f-sizes').value = (j.sizes || []).join('، ');
   genVariants(); calcFinal(); toast('تمت التعبئة. راجع الحقول قبل الحفظ.');
+});
+
+
+/* ---------- استخراج الرابط والاسم من نص المشاركة (بدون أي جلب من شي إن) ---------- */
+function parseShare(text) {
+  const t = String(text || '').replace(/&amp;/g, '&');
+  const m = t.match(/https?:\/\/[^\s"'<>]+/);
+  if (!m) return null;
+  let u; try { u = new URL(m[0]); } catch (e) { return null; }
+  const red = u.searchParams.get('redirection');            // رابط صفحة التحقق بيحمل الرابط الأصلي
+  if (red) { try { u = new URL(red); } catch (e) {} }
+  let slug = u.pathname.split('/').pop() || '';
+  try { slug = decodeURIComponent(slug); } catch (e) {}
+  slug = slug.replace(/\.html$/i, '');
+  const idm = slug.match(/-p-(\d+)/);
+  const fromSlug = slug.replace(/-p-\d+.*$/, '').replace(/-/g, ' ').trim();
+  const before = t.replace(m[0], '').replace(/\s+/g, ' ').trim();
+  const title = (before.length > 3 && before.length < 200 && !/[<>=]/.test(before)) ? before : fromSlug;
+  return { url: u.origin + u.pathname, id: idm ? idm[1] : '', title };
+}
+$('#doshare').addEventListener('click', () => {
+  const r = parseShare($('#pl').value);
+  if (!r) return toast('ما لقيت رابط صالح بالنص');
+  const dup = products.find(p => p.source_url === r.url);
+  if (dup && !editing) return toast('هذا المنتج موجود مسبقاً. الكود: ' + dup.code);
+  $('#f-url').value = r.url;
+  if (!$('#f-title').value.trim()) $('#f-title').value = r.title;
+  toast('تم استخراج الرابط والاسم. اكتب السعر وأضف الصور.');
 });
 
 async function edit(id) {

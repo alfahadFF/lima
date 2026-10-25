@@ -23,7 +23,7 @@ const Cart = {
 
 function renderHeader() {
   const h = $('#hdr'); if (!h) return;
-  h.innerHTML = `<div class="wrap bar"><a class="brand" href="index.html"><img class="logo" src="icons/icon-192.png" alt="" width="40" height="40"><span>${esc(CONFIG.STORE_NAME)}</span></a>
+  h.innerHTML = `<div class="wrap bar"><a class="brand" href="index.html"><img class="logo" src="icons/logo-mark.png" alt="" width="40" height="40"><span>${esc(CONFIG.STORE_NAME)}</span></a>
     <div class="hbtns"><button class="cartlink icon" id="install" hidden aria-label="تثبيت التطبيق" title="تثبيت التطبيق"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg></button>
     <a class="cartlink" href="cart.html">السلة <span class="badge" id="badge" hidden></span></a></div></div>`;
   renderBadge(); renderInstall();

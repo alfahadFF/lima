@@ -1,7 +1,7 @@
 // sw.js - تخزين مؤقت بسيط: الشبكة أولاً، ثم النسخة المخزنة إذا انقطع الاتصال
-const V = 'lima-v3';
+const V = 'lymar-v2';
 const SHELL = ['index.html', 'product.html', 'cart.html', 'offline.html', 'style.css', 'app.js', 'config.js',
-  'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
+  'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/logo-mark.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
