@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>زر السحب — اسحب بيانات المنتج</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Amiri:wght@700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  .steps{counter-reset:s;list-style:none;padding:0;margin:0}
+  .steps li{position:relative;padding:0 46px 18px 0;border-inline-start:2px dashed var(--gold-soft);margin-inline-start:16px}
+  .steps li:last-child{border-inline-start-color:transparent;padding-bottom:0}
+  .steps li::before{counter-increment:s;content:counter(s);position:absolute;inset-inline-start:-16px;top:0;width:30px;height:30px;border-radius:50%;background:var(--ink);color:var(--base);display:grid;place-items:center;font-weight:700;font-size:.9rem}
+  .drag{display:inline-flex;align-items:center;gap:10px;padding:15px 28px;border-radius:14px;background:var(--ink);color:var(--base);font-weight:700;cursor:grab;border:2px dashed var(--gold);user-select:none;text-decoration:none}
+  .drag:active{cursor:grabbing}
+  .badge-free{display:inline-block;background:var(--wa);color:#fff;border-radius:999px;padding:2px 12px;font-size:.78rem;font-weight:700}
+  .note-box{background:var(--blush-soft);border-radius:14px;padding:14px 16px;margin:16px 0}
+  .warn{background:#fdf1ef;border:1px solid #e9c3be;border-radius:14px;padding:14px 16px;margin:16px 0}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap bar"><a class="brand" href="alfa.html"><img class="logo" src="icons/logo-mark.png" alt="" width="40" height="40"><span>لوحة التحكم</span></a><a class="cartlink" href="alfa.html">رجوع</a></div></header>
+
+<main class="wrap" style="max-width:720px;padding:24px 16px 72px">
+  <h1 class="h1">زر السحب</h1>
+  <p><span class="badge-free">بدون أي دفع</span> &nbsp; <span class="muted">يجلب: الاسم · السعر · الصور · المقاسات · الألوان · النافد</span></p>
+
+  <div class="note-box">
+    زر السحب يقرأ البيانات من صفحة المنتج داخل <b>متصفحك أنت</b> — لهذا لا تحجبه المواقع ولا يحتاج أي مفتاح أو اشتراك.
+  </div>
+
+  <h2 class="h1" style="font-size:1.15rem">اضبط الزر مرة واحدة</h2>
+  <div class="panel" style="text-align:center">
+    <p style="margin:0 0 12px"><a class="drag" id="bm" href="#" onclick="return false">🛍️ اسحب بيانات المنتج</a></p>
+    <p class="muted" style="margin:0">اسحب الزر إلى شريط المفضلة (Bookmarks Bar) مرة واحدة فقط.</p>
+    <p style="margin:12px 0 0"><button class="btn sm ghost" id="copycode" type="button">نسخ كود الزر</button></p>
+    <p class="muted" id="msg" style="margin:8px 0 0;min-height:1.4em"></p>
+  </div>
+  <ol class="steps" style="margin-top:16px">
+    <li>افتح صفحة المنتج على <b>shein.com</b> أو <b>temu.com</b> في كروم على الحاسوب.</li>
+    <li>انتظر ظهور الصور والسعر، ثم اضغط الزر من شريط المفضلة.</li>
+    <li>تُنسخ البيانات تلقائيًا وتظهر في لوحة داخل الصفحة.</li>
+    <li>افتح <a href="alfa.html">لوحة التحكم</a> ← «منتج جديد» ← «تعبئة الحقول من JSON» ← الصق ← راجع ← احفظ.</li>
+  </ol>
+
+  <h2 class="h1" style="font-size:1.15rem;margin-top:30px">الطريقة ٢ — لصق نص الصفحة (هاتف أو حاسوب)</h2>
+  <ol class="steps">
+    <li>افتح صفحة المنتج في متصفح هاتفك.</li>
+    <li>اضغط مطوّلًا على النص ← <b>تحديد الكل</b> ← <b>نسخ</b>.</li>
+    <li>في لوحة التحكم ← «منتج جديد» ← قسم «لصق نص الصفحة» ← الصق ← <b>استخراج من النص</b>.</li>
+    <li>يُعبَّأ الاسم والسعر والعملة والمقاسات والألوان. أضف الصور، ثم احفظ.</li>
+  </ol>
+  <div class="note-box">
+    هذه الطريقة لا تجلب الصور (النص لا يحتويها). لمتجر كامل ننصح بإنجاز الاستيراد من الحاسوب مرة واحدة أسبوعيًا بكمية، وترك الهاتف للإضافات السريعة.
+  </div>
+
+  <h2 class="h1" style="font-size:1.15rem;margin-top:30px">الطريقة ٣ — مشاركة من تطبيق شي إن (أندرويد)</h2>
+  <p class="muted">بعد تثبيت متجرك كتطبيق: من تطبيق شي إن اضغط «مشاركة» ← اختر متجرك ← يُفتح الاستيراد والرابط معبّأ تلقائيًا. عندها أكمل بالطريقة ٢ (لصق النص) — أسرع من إعادة الكتابة.</p>
+
+  <h2 class="h1" style="font-size:1.15rem;margin-top:30px">الجلب المباشر بالرابط؟</h2>
+  <p class="muted">موجود في اللوحة ويُجرَّب أولًا لأنه أسرع حين ينجح: مع <b>تيمو</b> يجلب الاسم والوصف والصورة غالبًا، ومع <b>شي إن</b> يفشل بسبب التحقق. حين يفشل تظهر لك الطرق الثلاث أعلاه فورًا. لا تعتمد عليه وحده.</p>
+
+  <p class="muted" style="margin-top:26px">ملاحظة قانونية: أنت مسؤول عن استخدام صور وأوصاف المنتج. أعد صياغة الوصف بالعربية باسم متجرك قبل النشر.</p>
+</main>
+
+<script>
+(async function () {
+  const a = document.getElementById('bm');
+  const msg = document.getElementById('msg');
+  let src = '';
+  try {
+    src = await (await fetch('bookmarklet.src.js', { cache: 'no-store' })).text();
+  } catch (e) {
+    msg.textContent = 'تعذّر تحميل كود الزر.';
+    return;
+  }
+  const href = 'javascript:' + encodeURIComponent(src.replace(/^\uFEFF/, ''));
+  a.href = href;
+  document.getElementById('copycode').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(href); msg.textContent = 'تم نسخ الكود. أنشئ مفضلة باسم «سحب المنتج» والصق الكود في خانة العنوان.'; }
+    catch (e) { window.prompt('انسخ الكود:', href); }
+  });
+})();
+</script>
+</body>
+</html>
