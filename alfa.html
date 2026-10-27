@@ -229,7 +229,9 @@ let fieldsDirty = false;
 
 function resetForm() {
   editing = null; variants = []; fieldsDirty = false;
-  ['f-title', 'f-url', 'f-price', 'f-desc', 'f-images', 'f-colors', 'f-sizes', 'pj', 'imp-html', 'one'].forEach(id => { $('#' + id).value = ''; });
+  // نمرّ على العناصر الموجودة فقط — أي حقل محذوف لا يوقف الدالة
+  ['f-title', 'f-url', 'f-price', 'f-desc', 'f-images', 'f-colors', 'f-sizes', 'imp-html', 'one']
+    .forEach(id => { const el = $('#' + id); if (el) el.value = ''; });
   $('#f-margin').value = 30; $('#f-cat').value = ''; $('#f-status').value = 'draft';
   $('#ftitle').textContent = 'منتج جديد'; $('#tabform').textContent = 'منتج جديد'; $('#del').hidden = true;
   renderVariants(); calcFinal();
