@@ -323,10 +323,20 @@ async function oneGo() {
     if (j.ok) { previewImport(j); applyImport(j); msg.textContent = 'تم الاستخراج من النص ✓'; return; }
   }
 
-  // رابط فقط → نجرب الجلب من الخادم
+  // رابط فقط → ① نستخرج الرابط والاسم فورًا (بلا شبكة) ثم ② نحاول إثراء البيانات
   if (R.kind === 'url') {
     const dup = products.find(p => p.source_url === link.url);
     if (dup && !editing) return toast('المنتج موجود مسبقًا: ' + dup.code);
+
+    // ① فوري: الرابط النظيف + الاسم من الرابط
+    const quick = Extract.fromShare(v);
+    if (quick) {
+      $('#f-url').value = quick.url;
+      if (quick.title && !$('#f-title').value.trim()) $('#f-title').value = quick.title;
+      msg.textContent = quick.title
+        ? 'تم استخراج الرابط والاسم — أكمل السعر والصور، أو انتظر الجلب التلقائي…'
+        : 'تم استخراج الرابط — اكتب الاسم والسعر، أو انتظر الجلب التلقائي…';
+    }
     const btn = $('#one-go'); btn.disabled = true; btn.textContent = 'جاري الجلب...';
     msg.textContent = 'نجرب الجلب التلقائي...';
     try {
@@ -341,7 +351,7 @@ async function oneGo() {
       }
       // فشل → نطلب خطوة واحدة فقط: انسخ نص الصفحة
       const host = link.source === 'shein' ? 'شي إن' : link.source === 'temu' ? 'تيمو' : 'الموقع';
-      msg.innerHTML = '<b style="color:var(--bad)">' + host + ' ما يسمح بالجلب التلقائي.</b> خطوة واحدة فقط:';
+      msg.innerHTML = '<b>' + host + ' ما يسمح بالجلب التلقائي.</b> الرابط والاسم جاهزين فوق — تكمّل السعر والصور، أو انسخ نص الصفحة لتعبئة الكل:';
       openBox.hidden = false;
       openBox.innerHTML = '<a class="btn sm" href="' + esc(link.url) + '" target="_blank" rel="noopener">افتح المنتج ↗</a>'
         + '<span class="muted" style="display:block;margin-top:8px">في الصفحة: حدّد كل النص (Ctrl+A) ← انسخ (Ctrl+C) ← ارجع هنا والصقه في الخانة ↑ ثم «استخراج وتعبئة».</span>';

@@ -1,7 +1,7 @@
 // test/extract.test.js — node test/extract.test.js
 const fs = require('fs');
 const path = require('path');
-const { fromHtml, fromText, cleanUrl, route } = require('../extract.js');
+const { fromHtml, fromText, fromShare, cleanUrl, route } = require('../extract.js');
 
 let pass = 0, fail = 0;
 function eq(name, got, want) {
@@ -137,6 +137,31 @@ console.log('\n[10] توجيه المدخلات (الخانة الواحدة)');
   eq('عنوان من النص', j.title, 'SHEIN Women Dress');
   eq('سعر من النص', j.price, 19);
   eq('مقاسات', j.sizes, ['S', 'M', 'L']);
+}
+
+
+console.log('\n[11] لصق الرابط → رابط + اسم (بلا شبكة)');
+{
+  let r = fromShare('https://us.shein.com/Floral-Print-Midi-Dress-p-12345678.html?utm_source=app');
+  eq('الرابط نظيف', r.url, 'https://us.shein.com/Floral-Print-Midi-Dress-p-12345678.html');
+  eq('الاسم من الرابط', r.title, 'Floral Print Midi Dress');
+  eq('المعرّف', r.id, '12345678');
+  eq('المصدر', r.source, 'shein');
+
+  r = fromShare('فستان ميدي بطبعات الزهور https://us.shein.com/Floral-Midi-Dress-p-12345678.html');
+  eq('الاسم من نص المشاركة', r.title, 'فستان ميدي بطبعات الزهور');
+
+  r = fromShare('https://www.shein.com/risk/challenge?redirection=' + encodeURIComponent('https://us.shein.com/Linen-Wide-Leg-Pants-p-99887766.html'));
+  eq('يستخرج الرابط الأصلي من صفحة التحقق', r.url, 'https://us.shein.com/Linen-Wide-Leg-Pants-p-99887766.html');
+  eq('اسمه', r.title, 'Linen Wide Leg Pants');
+
+  r = fromShare('https://www.temu.com/g-607200982472092.html');
+  eq('تيمو: رابط', r.url, 'https://www.temu.com/g-607200982472092.html');
+  eq('تيمو: لا اسم وهمي', r.title, '');
+  eq('تيمو: المعرّف', r.id, '607200982472092');
+
+  eq('نص بلا رابط', fromShare('مرحبا'), null);
+  ok('تنبيه أن الباقي يدوي', fromShare('https://us.shein.com/a-b-p-1.html') !== null);
 }
 
 console.log('\n' + (fail ? '❌ فشل ' + fail + ' / نجح ' + pass : '✅ كل الاختبارات ناجحة (' + pass + ')'));

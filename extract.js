@@ -508,6 +508,60 @@
     };
   }
 
+  /* ---------- استخراج الرابط والاسم من رابط أو نص مشاركة (بلا أي شبكة) ----------
+   * أبسط طريق: تلصق رابط شي إن (أو نص المشاركة من التطبيق) فنُرجع
+   * الرابط النظيف + الاسم المستنبط + معرّف المنتج. والباقي تكمّله أنت.
+   */
+  function fromShare(input) {
+    const text = String(input || '').replace(/&amp;/g, '&');
+    const m = text.match(/https?:\/\/[^\s"'<>]+/);
+    if (!m) return null;
+    let u;
+    try { u = new URL(decode(m[0])); } catch (e) { return null; }
+
+    const red = u.searchParams.get('redirection') || u.searchParams.get('url');
+    if (red && /^https?:/.test(red)) { try { u = new URL(decodeURIComponent(red)); } catch (e) {} }
+
+    let slug = (u.pathname.split('/').pop() || '');
+    try { slug = decodeURIComponent(slug); } catch (e) {}
+    slug = slug.replace(/\.html?$/i, '');
+
+    const idm = slug.match(/-p-(\d+)/) || slug.match(/-g-(\d+)/) || slug.match(/(\d{6,})/);
+    const id = idm ? idm[1] : '';
+
+    let fromSlug = slug
+      .replace(/-p-\d+.*$/i, '')
+      .replace(/-g-\d+.*$/i, '')
+      .replace(/^(p|g|goods|product)[-_]/i, '')
+      .replace(/[-_]+/g, ' ')
+      .replace(/\s+\d{4,}.*$/, '')
+      .trim();
+
+    const words = fromSlug.split(/\s+/).filter(w => /[a-z\u0600-\u06FF]{3,}/i.test(w));
+    if (words.length < 2) fromSlug = '';
+
+    const before = text.replace(m[0], '').replace(/\s+/g, ' ').trim();
+    const fromText = (before.length > 3 && before.length < 200 && !/[<>=]/.test(before)) ? before : '';
+
+    // إزالة معاملات التتبّع
+    ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'url_from',
+      'share_from', 'ref', 'ref_', 'aff_id', 'tt_from', 'code'].forEach(k => u.searchParams.delete(k));
+    const url = u.origin + u.pathname + (u.search ? '?' + u.searchParams.toString() : '');
+    return {
+      ok: true,
+      mode: 'link',
+      url,
+      source: sourceOf(url),
+      id,
+      title: tidyTitle(fromText || fromSlug),
+      price: null, currency: 'USD', description: '', images: [],
+      colors: [], sizes: [], soldOut: [],
+      confidence: 'low',
+      notes: ['استُخرج الرابط والاسم فقط — أكمل السعر والصور.']
+    };
+  }
+
+
   /* ---------- توجيه ما لصقه المستخدم ----------
    * يرجع نوع المدخل حتى تعرف الواجهة ماذا تفعل:
    *   json     → ملصوق JSON من زر السحب
@@ -538,5 +592,5 @@
     return { url: u.origin + u.pathname + (u.search ? '?' + u.searchParams.toString() : ''), source: sourceOf(u.href) };
   }
 
-  return { fromHtml, fromText, cleanUrl, route, sourceOf, tidyTitle, tidyImage, version: '1.2.0' };
+  return { fromHtml, fromText, fromShare, cleanUrl, route, sourceOf, tidyTitle, tidyImage, version: '1.3.0' };
 }));
