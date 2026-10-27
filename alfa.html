@@ -46,22 +46,30 @@
     <div id="t-form" class="panel" hidden>
       <h2 class="h1" id="ftitle" style="margin-top:0">منتج جديد</h2>
       <details class="import" open>
-        <summary>استيراد منتج — الصق أي شيء هنا</summary>
-        <div class="field" style="margin-top:12px">
-          <textarea class="in" id="one" rows="4" placeholder="الصق رابط المنتج… أو (الأفضل) افتح المنتج وانسخ كل النص والصقه هنا"></textarea>
+        <summary>استيراد منتج — من صفحة المنتج مباشرة</summary>
+
+        <div style="background:var(--blush-soft);border-radius:12px;padding:12px;margin-top:12px">
+          <b>① اضغط زر السحب في صفحة المنتج</b>
+          <p class="muted" style="margin:6px 0 0">ينسخ الاسم والسعر والصور والمقاسات والألوان كلها مرة واحدة.
+            <a href="import.html" target="_blank" rel="noopener">تجهيز الزر ↗</a></p>
         </div>
-        <button class="btn sm" id="one-go" type="button">استخراج وتعبئة</button>
+
+        <div class="field" style="margin-top:14px">
+          <label for="one"><b>② الصق هنا</b> — يُعبّأ فورًا عند اللصق</label>
+          <textarea class="in" id="one" rows="5" placeholder='الصق JSON الذي نسخه زر السحب… (أو الصق نص الصفحة كاملًا كبديل)'></textarea>
+        </div>
+        <div class="acts" style="justify-content:flex-start">
+          <button class="btn sm ghost" id="one-go" type="button">استخراج يدويًا</button>
+        </div>
         <p class="muted" id="one-msg" style="min-height:1.4em;margin:10px 0 0"></p>
         <div id="imp-prev"></div>
         <p id="one-open" hidden style="margin:10px 0 0"></p>
 
         <details style="margin-top:14px;border-top:1px dashed var(--line);padding-top:12px">
-          <summary class="muted">طرق أخرى (زر السحب / JSON / كود الصفحة)</summary>
-          <div class="field" style="margin-top:10px"><label for="pj">JSON من زر السحب</label><textarea class="in" id="pj" rows="3" dir="ltr" style="font-size:.82rem"></textarea></div>
-          <button class="btn sm ghost" id="doimport" type="button">تعبئة من JSON</button>
-          <div class="field" style="margin-top:12px"><label for="imp-html">كود الصفحة (HTML)</label><textarea class="in" id="imp-html" rows="3" dir="ltr" style="font-size:.82rem"></textarea></div>
+          <summary class="muted">الرابط فقط / كود الصفحة (بدائل)</summary>
+          <p class="muted" style="margin:8px 0">الرابط وحده يعطي الاسم فقط (المواقع تمنع الجلب التلقائي).</p>
+          <div class="field"><textarea class="in" id="imp-html" rows="3" dir="ltr" style="font-size:.82rem" placeholder="أو الصق كود الصفحة (Ctrl+U)"></textarea></div>
           <button class="btn sm ghost" id="imp-parse" type="button">استخراج من الكود</button>
-          <p class="muted" style="margin-top:10px"><a href="import.html" target="_blank" rel="noopener">شرح زر السحب ↗</a></p>
         </details>
       </details>
 
@@ -287,9 +295,10 @@ function applyImport(j) {
   renderVariants(); calcFinal();
   const cur = String(j.currency || '').toUpperCase();
   const bits = [j.title ? 'اسم ✓' : 'اسم ✗', j.price != null ? 'سعر ✓' : 'سعر ✗', (j.images || []).length + ' صورة'];
-  if ((j.sizes || []).length) bits.push(j.sizes.length + ' مقاس');
-  if ((j.colors || []).length) bits.push(j.colors.length + ' لون');
-  toast(bits.join(' · ') + (cur && cur !== 'USD' ? ' — السعر بـ' + cur : ''));
+  bits.push((j.sizes || []).length + ' مقاس');
+  bits.push((j.colors || []).length + ' لون');
+  $('#one-msg').textContent = 'تمت التعبئة — ' + bits.join(' · ') + (cur && cur !== 'USD' ? ' · السعر بـ' + cur : '');
+  toast('تمت التعبئة ✓');
   $('#f-title').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
@@ -298,7 +307,10 @@ function previewImport(j) {
   $('#imp-prev').innerHTML = `<div class="panel" style="margin-top:12px;padding:12px">
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">${th}</div>
     <div><b>${esc(j.title || 'بدون عنوان')}</b></div>
-    <div class="muted">السعر: <bdi>${j.price != null ? esc(j.price) + ' ' + esc(j.currency || '') : '—'}</bdi>${(j.sizes || []).length ? ' · مقاسات: ' + esc(j.sizes.join('، ')) : ''}${(j.colors || []).length ? ' · ألوان: ' + esc(j.colors.join('، ')) : ''}</div>
+    <div class="muted">السعر: <bdi>${j.price != null ? esc(j.price) + ' ' + esc(j.currency || '') : '—'}</bdi></div>
+    <div class="muted">المقاسات: ${(j.sizes || []).length ? esc(j.sizes.join('، ')) : '<span style="color:var(--bad)">✗</span>'}</div>
+    <div class="muted">الألوان: ${(j.colors || []).length ? esc(j.colors.join('، ')) : '<span style="color:var(--bad)">✗</span>'}</div>
+    ${(j.soldOut || []).length ? `<div class="muted">نافد: ${esc(j.soldOut.join('، '))}</div>` : ''}
   </div>`;
 }
 
@@ -368,11 +380,10 @@ async function oneGo() {
   else msg.textContent = 'ما لقينا اسمًا أو سعرًا في النص — جرّب نسخ الصفحة كاملة.';
 }
 
+// لصق فعلي → تعبئة فورية بلا زر
+$('#one').addEventListener('paste', () => setTimeout(() => { if ($('#one').value.trim().length > 10) oneGo(); }, 30));
+$('#one').addEventListener('input', () => { if (/^\s*\{/.test($('#one').value) && $('#one').value.trim().endsWith('}')) setTimeout(oneGo, 200); });
 $('#one-go').addEventListener('click', oneGo);
-$('#doimport').addEventListener('click', () => {
-  let j; try { j = JSON.parse($('#pj').value); } catch (e) { return toast('JSON غير صالح'); }
-  previewImport(j); applyImport(j);
-});
 $('#imp-parse').addEventListener('click', () => {
   const html = $('#imp-html').value;
   if (html.trim().length < 200) return toast('الصق كود الصفحة كاملًا');
