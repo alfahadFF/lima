@@ -1,3 +1,17 @@
 [build]
   publish = "."
   functions = "netlify/functions"
+
+[functions]
+  # يسمح بضمّ extract.js (خارج مجلد الدوال) داخل حزمة الدالة
+  node_bundler = "esbuild"
+
+[[headers]]
+  for = "/alfa.html"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+
+[[headers]]
+  for = "/import.html"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"

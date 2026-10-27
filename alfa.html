@@ -46,22 +46,31 @@
     <div id="t-form" class="panel" hidden>
       <h2 class="h1" id="ftitle" style="margin-top:0">منتج جديد</h2>
       <details class="import" open>
-        <summary>استيراد من CJ Dropshipping</summary>
+        <summary>استيراد منتج — الصق أي شيء هنا</summary>
+        <div class="field" style="margin-top:12px">
+          <textarea class="in" id="one" rows="4" placeholder="الصق رابط المنتج… أو (الأفضل) افتح المنتج وانسخ كل النص والصقه هنا"></textarea>
+        </div>
+        <button class="btn sm" id="one-go" type="button">استخراج وتعبئة</button>
+        <p class="muted" id="one-msg" style="min-height:1.4em;margin:10px 0 0"></p>
+        <div id="imp-prev"></div>
+        <p id="one-open" hidden style="margin:10px 0 0"></p>
+
+        <details style="margin-top:14px;border-top:1px dashed var(--line);padding-top:12px">
+          <summary class="muted">طرق أخرى (زر السحب / JSON / كود الصفحة)</summary>
+          <div class="field" style="margin-top:10px"><label for="pj">JSON من زر السحب</label><textarea class="in" id="pj" rows="3" dir="ltr" style="font-size:.82rem"></textarea></div>
+          <button class="btn sm ghost" id="doimport" type="button">تعبئة من JSON</button>
+          <div class="field" style="margin-top:12px"><label for="imp-html">كود الصفحة (HTML)</label><textarea class="in" id="imp-html" rows="3" dir="ltr" style="font-size:.82rem"></textarea></div>
+          <button class="btn sm ghost" id="imp-parse" type="button">استخراج من الكود</button>
+          <p class="muted" style="margin-top:10px"><a href="import.html" target="_blank" rel="noopener">شرح زر السحب ↗</a></p>
+        </details>
+      </details>
+
+      <details class="import">
+        <summary>بحث في مستودع CJ Dropshipping (اختياري)</summary>
         <div class="field" style="margin-top:12px"><input class="in" id="cjq" type="search" placeholder="ابحث بالإنجليزي، مثل: summer dress" dir="ltr"></div>
         <button class="btn sm" id="cjgo" type="button">بحث</button>
         <div id="cjres" style="margin-top:12px"></div>
-        <p class="muted">الأسعار بالدولار. اسم المنتج بيجي بالإنجليزي، عدّله للعربي قبل النشر.</p>
-      </details>
-      <details class="import">
-        <summary>لصق رابط شي إن أو نص المشاركة</summary>
-        <div class="field" style="margin-top:12px"><textarea class="in" id="pl" placeholder="الصق رابط المنتج أو نص المشاركة من تطبيق شي إن" dir="ltr"></textarea></div>
-        <button class="btn sm ghost" id="doshare" type="button">استخراج الرابط والاسم</button>
-        <p class="muted">بيستخرج الرابط النظيف والاسم بس. السعر والصور والخيارات بتعبّيها بنفسك.</p>
-      </details>
-      <details class="import">
-        <summary>لصق بيانات من شي إن (JSON من الـ Bookmarklet)</summary>
-        <div class="field" style="margin-top:12px"><textarea class="in" id="pj" placeholder="الصق الـ JSON هنا" dir="ltr"></textarea></div>
-        <button class="btn sm ghost" id="doimport" type="button">تعبئة الحقول</button>
+        <p class="muted">هذا يبحث في مخزن CJ نفسه فقط — لا يجلب من شي إن/تيمو.</p>
       </details>
 
       <div class="field"><label for="f-title">اسم المنتج</label><input class="in" id="f-title"></div>
@@ -101,6 +110,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="config.js"></script>
 <script src="app.js"></script>
+<script src="extract.js"></script>
 <script>
 const ST = { draft: 'مسودة', published: 'منشور', hidden: 'مخفي' };
 let wasIn = false, cats = [], products = [], editing = null, variants = [];
@@ -211,7 +221,7 @@ let fieldsDirty = false;
 
 function resetForm() {
   editing = null; variants = []; fieldsDirty = false;
-  ['f-title', 'f-url', 'f-price', 'f-desc', 'f-images', 'f-colors', 'f-sizes', 'pj', 'pl'].forEach(id => { $('#' + id).value = ''; });
+  ['f-title', 'f-url', 'f-price', 'f-desc', 'f-images', 'f-colors', 'f-sizes', 'pj', 'imp-html', 'one'].forEach(id => { $('#' + id).value = ''; });
   $('#f-margin').value = 30; $('#f-cat').value = ''; $('#f-status').value = 'draft';
   $('#ftitle').textContent = 'منتج جديد'; $('#tabform').textContent = 'منتج جديد'; $('#del').hidden = true;
   renderVariants(); calcFinal();
@@ -242,50 +252,124 @@ $('#vlist').addEventListener('change', e => {
   if (t.dataset.vs !== undefined) variants[+t.dataset.vs].in_stock = t.checked;
 });
 
-$('#doimport').addEventListener('click', () => {
-  let j; try { j = JSON.parse($('#pj').value); } catch (e) { return toast('JSON غير صالح'); }
-  $('#f-title').value = j.title || ''; $('#f-url').value = j.source_url || '';
-  $('#f-price').value = j.price ?? ''; $('#f-desc').value = j.description || '';
+/* ---------- استقبال رابط مشارَك من تطبيق شي إن/تيمو ---------- */
+(function () {
+  const q = new URLSearchParams(location.search);
+  const shared = q.get('shared_url') || q.get('shared_text') || '';
+  if (!shared) return;
+  const m = shared.match(/https?:\/\/[^\s"'<>]+/);
+  if (!m) return;
+  const ready = () => {
+    const box = $('#one');
+    if (!box) return setTimeout(ready, 200);
+    box.value = m[0];
+    box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    toast('وصل الرابط — اضغط «استخراج وتعبئة»');
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ready);
+  else ready();
+})();
+
+/* ---------- استيراد: خانة واحدة تستقبل رابطًا أو نصًا أو JSON ---------- */
+
+function applyImport(j) {
+  if (!j || (!j.title && j.price == null && !(j.images || []).length)) return toast('لم نجد بيانات — جرّب لصق نص الصفحة');
+  $('#f-title').value = j.title || '';
+  if (j.url || j.source_url) $('#f-url').value = j.url || j.source_url;
+  $('#f-price').value = j.price == null ? '' : j.price;
+  $('#f-desc').value = j.description || '';
   $('#f-images').value = (j.images || []).join('\n');
-  $('#f-colors').value = (j.colors || []).join('، '); $('#f-sizes').value = (j.sizes || []).join('، ');
+  $('#f-colors').value = (j.colors || []).join('، ');
+  $('#f-sizes').value = (j.sizes || []).join('، ');
   genVariants();
   const out = new Set(j.soldOut || []);
   variants.forEach(v => { if (v.size && out.has(v.size)) v.in_stock = false; });
   renderVariants(); calcFinal();
   const cur = String(j.currency || '').toUpperCase();
-  toast(cur && cur !== 'USD'
-    ? 'السعر بعملة ' + cur + ' وليس بالدولار. حوّله قبل الحفظ.'
-    : 'تمت التعبئة. راجع الحقول قبل الحفظ.');
-});
-
-
-/* ---------- استخراج الرابط والاسم من نص المشاركة (بدون أي جلب من شي إن) ---------- */
-function parseShare(text) {
-  const t = String(text || '').replace(/&amp;/g, '&');
-  const m = t.match(/https?:\/\/[^\s"'<>]+/);
-  if (!m) return null;
-  let u; try { u = new URL(m[0]); } catch (e) { return null; }
-  const red = u.searchParams.get('redirection');            // رابط صفحة التحقق بيحمل الرابط الأصلي
-  if (red) { try { u = new URL(red); } catch (e) {} }
-  let slug = u.pathname.split('/').pop() || '';
-  try { slug = decodeURIComponent(slug); } catch (e) {}
-  slug = slug.replace(/\.html$/i, '');
-  const idm = slug.match(/-p-(\d+)/);
-  const fromSlug = slug.replace(/-p-\d+.*$/, '').replace(/-/g, ' ').trim();
-  const before = t.replace(m[0], '').replace(/\s+/g, ' ').trim();
-  const title = (before.length > 3 && before.length < 200 && !/[<>=]/.test(before)) ? before : fromSlug;
-  return { url: u.origin + u.pathname, id: idm ? idm[1] : '', title };
+  const bits = [j.title ? 'اسم ✓' : 'اسم ✗', j.price != null ? 'سعر ✓' : 'سعر ✗', (j.images || []).length + ' صورة'];
+  if ((j.sizes || []).length) bits.push(j.sizes.length + ' مقاس');
+  if ((j.colors || []).length) bits.push(j.colors.length + ' لون');
+  toast(bits.join(' · ') + (cur && cur !== 'USD' ? ' — السعر بـ' + cur : ''));
+  $('#f-title').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
-$('#doshare').addEventListener('click', () => {
-  const r = parseShare($('#pl').value);
-  if (!r) return toast('ما لقيت رابط صالح بالنص');
-  const dup = products.find(p => p.source_url === r.url);
-  if (dup && !editing) return toast('هذا المنتج موجود مسبقاً. الكود: ' + dup.code);
-  $('#f-url').value = r.url;
-  if (!$('#f-title').value.trim()) $('#f-title').value = r.title;
-  toast('تم استخراج الرابط والاسم. اكتب السعر وأضف الصور.');
-});
 
+function previewImport(j) {
+  const th = (j.images || []).slice(0, 5).map(u => `<img src="${esc(u)}" alt="" referrerpolicy="no-referrer" style="width:64px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">`).join('');
+  $('#imp-prev').innerHTML = `<div class="panel" style="margin-top:12px;padding:12px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">${th}</div>
+    <div><b>${esc(j.title || 'بدون عنوان')}</b></div>
+    <div class="muted">السعر: <bdi>${j.price != null ? esc(j.price) + ' ' + esc(j.currency || '') : '—'}</bdi>${(j.sizes || []).length ? ' · مقاسات: ' + esc(j.sizes.join('، ')) : ''}${(j.colors || []).length ? ' · ألوان: ' + esc(j.colors.join('، ')) : ''}</div>
+  </div>`;
+}
+
+async function oneGo() {
+  const v = $('#one').value.trim();
+  const msg = $('#one-msg'), openBox = $('#one-open');
+  openBox.hidden = true; msg.textContent = ''; $('#imp-prev').innerHTML = '';
+  if (v.length < 10) { msg.textContent = 'الصق رابطًا أو نص الصفحة أولًا.'; return; }
+
+  // JSON ملصوق؟
+  if (/^\s*\{/.test(v)) {
+    try { const j = JSON.parse(v); previewImport(j); return applyImport(j); }
+    catch (e) { msg.textContent = 'هذا يبدو JSON لكنه غير صالح.'; return; }
+  }
+
+  const R = Extract.route(v);
+  const link = R.url ? { url: R.url, source: R.source } : null;
+
+  // رابط + نص طويل = المستخدم نسخ الصفحة كاملة → نستخرج من النص (أدق وأسرع)
+  if (R.kind === 'url+text') {
+    const j = Extract.fromText(R.text, R.url);
+    if (j.ok) { previewImport(j); applyImport(j); msg.textContent = 'تم الاستخراج من النص ✓'; return; }
+  }
+
+  // رابط فقط → نجرب الجلب من الخادم
+  if (R.kind === 'url') {
+    const dup = products.find(p => p.source_url === link.url);
+    if (dup && !editing) return toast('المنتج موجود مسبقًا: ' + dup.code);
+    const btn = $('#one-go'); btn.disabled = true; btn.textContent = 'جاري الجلب...';
+    msg.textContent = 'نجرب الجلب التلقائي...';
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) throw new Error('سجّل الدخول أولاً');
+      const r = await fetch('/.netlify/functions/import-product?url=' + encodeURIComponent(link.url), { headers: { Authorization: 'Bearer ' + session.access_token } });
+      const j = await r.json().catch(() => ({}));
+      if (j.ok) {
+        previewImport(j); applyImport(j);
+        msg.textContent = j.partial ? 'جلب جزئي — أكمل الناقص يدويًا.' : 'تم الجلب ✓';
+        return;
+      }
+      // فشل → نطلب خطوة واحدة فقط: انسخ نص الصفحة
+      const host = link.source === 'shein' ? 'شي إن' : link.source === 'temu' ? 'تيمو' : 'الموقع';
+      msg.innerHTML = '<b style="color:var(--bad)">' + host + ' ما يسمح بالجلب التلقائي.</b> خطوة واحدة فقط:';
+      openBox.hidden = false;
+      openBox.innerHTML = '<a class="btn sm" href="' + esc(link.url) + '" target="_blank" rel="noopener">افتح المنتج ↗</a>'
+        + '<span class="muted" style="display:block;margin-top:8px">في الصفحة: حدّد كل النص (Ctrl+A) ← انسخ (Ctrl+C) ← ارجع هنا والصقه في الخانة ↑ ثم «استخراج وتعبئة».</span>';
+      $('#one').value = link.url;
+    } catch (e) {
+      msg.textContent = e.message || 'فشل الجلب';
+    } finally { btn.disabled = false; btn.textContent = 'استخراج وتعبئة'; }
+    return;
+  }
+
+  // نص فقط → استخراج نصي
+  const j = Extract.fromText(v, '');
+  if (j.ok) { previewImport(j); applyImport(j); msg.textContent = 'تم الاستخراج من النص ✓ (أضف الصور يدويًا)'; }
+  else msg.textContent = 'ما لقينا اسمًا أو سعرًا في النص — جرّب نسخ الصفحة كاملة.';
+}
+
+$('#one-go').addEventListener('click', oneGo);
+$('#doimport').addEventListener('click', () => {
+  let j; try { j = JSON.parse($('#pj').value); } catch (e) { return toast('JSON غير صالح'); }
+  previewImport(j); applyImport(j);
+});
+$('#imp-parse').addEventListener('click', () => {
+  const html = $('#imp-html').value;
+  if (html.trim().length < 200) return toast('الصق كود الصفحة كاملًا');
+  const j = Extract.fromHtml(html, '');
+  if (!j.ok) { toast('ما لقينا بيانات منتج في هذا الكود'); return; }
+  previewImport(j); applyImport(j);
+});
 
 /* ---------- استيراد من CJ (عبر دالة Netlify الآمنة) ---------- */
 async function cj(params) {
