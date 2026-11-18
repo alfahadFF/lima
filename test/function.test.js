@@ -132,34 +132,51 @@ const call = (qs, headers = { authorization: 'Bearer tok' }) =>
     ok('تيمو بلا تغيير (كروم فقط)', seen.length === 1 && seen[0] !== 'Twitterbot/1.0', JSON.stringify(seen));
   }
 
-  console.log('\n[7] رابط مشاركة من تطبيق شي إن → صفحة المنتج الحقيقية');
+  console.log('\n[7] روابط المشاركة من تطبيق شي إن (صفحات حقيقية محفوظة) → صفحة المنتج الكاملة');
   {
-    const asked = [];
-    const share = '<html><head><meta property="og:title" content="قلادة"><meta property="og:image" content="https://img.ltwebstatic.com/images3_spmp/2024/10/16/b2/x.jpg"></head><body>'
-      + '<script>var s={"deepLink":"","goodsId":"28052129","title":"قلادة","language":"ar","localcountry":"SA"};</script>' + 'x'.repeat(800) + '</body></html>';
-    global.fetch = async (url, opts) => {
+    const gone = '<html><head><title>[goods_name] | SHEIN USA</title></head><body>' + 'x'.repeat(900) + '</body></html>';
+    let asked = [];
+    const mock = (arHas = true) => async (url, opts) => {
       const u = String(url);
       if (u.includes('/auth/v1/user')) return new Response('{}', { status: 200 });
       asked.push(u);
-      if (u.includes('/sharejump/')) return new Response(share, { status: 200 });
-      if (u === 'https://ar.shein.com/x-p-28052129.html') return new Response(fix('shein-productgroup.html'), { status: 200 });
-      return new Response('', { status: 404 });
+      if (u.startsWith('https://onelink.shein.com/')) return new Response(fix('shein-onelink.html'), { status: 200 });
+      if (u.includes('/h5/sharejump/appjump')) return new Response(fix('shein-appjump.html'), { status: 200 });
+      if (u === 'https://ar.shein.com/x-p-77417590.html') return new Response(arHas ? fix('shein-productgroup.html') : gone, { status: 200 });
+      if (u === 'https://us.shein.com/x-p-77417590.html') return new Response(fix('shein-productgroup.html'), { status: 200 });
+      return new Response(gone, { status: 200 });
     };
-    r = await call({ url: 'قلادة اكتشفت منتجات رائعة على SHEIN http://api-shein.shein.com/h5/sharejump/appjump?link=AbC_8&localcountry=SA&url_from=GM1' });
-    eq('رابط http مقبول', r.status, 200);
-    ok('رابط المشاركة طُلب بـ https', /^https:\/\/api-shein\.shein\.com\/h5\/sharejump\//.test(asked[0] || ''), asked[0]);
-    eq('ثم صفحة المنتج (دولة عربية → ar.shein.com)', asked[1], 'https://ar.shein.com/x-p-28052129.html');
+
+    // ① رسالة onelink كما ينسخها التطبيق (اسم طويل + جملة + رابط)
+    global.fetch = mock(); asked = [];
+    r = await call({ url: 'Rom&nd JUICY Long-Lasting Lip Glaze 12 Cherry Bomb, Breathable Hydrating Film Fusion I discovered amazing products on SHEIN.com, come check them out! https://onelink.shein.com/58/66o0szw7pv1q?shc=2_RsXvL2FkE4k' });
+    eq('onelink: طلب الرابط ثم صفحة المنتج بالرقم من deeplink', asked, ['https://onelink.shein.com/58/66o0szw7pv1q?shc=2_RsXvL2FkE4k', 'https://ar.shein.com/x-p-77417590.html']);
     eq('ok', r.body.ok, true);
-    eq('الاسم الكامل', r.body.title, "Chiquease Women's Round Neck Short Sleeve Sweater");
+    eq('ليس جزئيًا', r.body.partial, undefined);
     ok('صور كثيرة لا صورة واحدة', r.body.images.length >= 5, r.body.images.length);
+    ok('السعر موجود', r.body.price != null, r.body.price);
     ok('مقاسات', r.body.sizes.length === 4, JSON.stringify(r.body.sizes));
 
+    // ② رابط appjump القديم (http) → shareInfo.id (shareType 8)
+    global.fetch = mock(); asked = [];
+    r = await call({ url: 'http://api-shein.shein.com/h5/sharejump/appjump?link=RsXvL2FkE4k_8&localcountry=TW&url_from=GM74806974455' });
+    ok('appjump بـ https', /^https:\/\/api-shein\.shein\.com\/h5\/sharejump\/appjump/.test(asked[0] || ''), asked[0]);
+    eq('appjump: صفحة المنتج بالرقم من shareInfo.id', asked[1], 'https://ar.shein.com/x-p-77417590.html');
+    eq('ok كامل', [r.body.ok, r.body.partial], [true, undefined]);
+
+    // ③ المنتج غير متوفر في الموقع العربي → الأمريكي
+    global.fetch = mock(false); asked = [];
+    r = await call({ url: 'https://onelink.shein.com/58/66o0szw7pv1q?shc=2_RsXvL2FkE4k' });
+    eq('ثم us.shein.com', asked.slice(1), ['https://ar.shein.com/x-p-77417590.html', 'https://us.shein.com/x-p-77417590.html']);
+    eq('ok', r.body.ok, true);
+
+    // ④ صفحة مشاركة بلا رقم منتج → ما فيها (جزئي) كما كان
     global.fetch = async (url) => {
       if (String(url).includes('/auth/v1/user')) return new Response('{}', { status: 200 });
       return new Response('<html><head><meta property="og:title" content="Heart Necklace Pendant"><meta property="og:image" content="https://img.ltwebstatic.com/images3_spmp/2024/10/16/b2/y.jpg"></head><body>' + 'x'.repeat(800) + '</body></html>', { status: 200 });
     };
-    r = await call({ url: 'https://api-shein.shein.com/h5/sharejump/appjump?link=zz_8&localcountry=US' });
-    eq('بلا رقم منتج → ما في الصفحة (جزئي)', [r.body.ok, r.body.partial], [true, true]);
+    r = await call({ url: 'https://onelink.shein.com/1/zz' });
+    eq('بلا رقم منتج → جزئي', [r.body.ok, r.body.partial], [true, true]);
   }
 
   global.fetch = realFetch;

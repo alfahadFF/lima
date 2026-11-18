@@ -185,5 +185,15 @@ console.log('\n[شي إن] منتج محذوف (قالب [goods_name])');
   eq('ok=false', r.ok, false);
 }
 
+
+console.log('\n[توجيه] رسالة مشاركة من التطبيق تروح للخادم مهما طالت');
+{
+  const en = 'Rom&nd JUICY Long-Lasting Lip Glaze 12 Cherry Bomb, Breathable Hydrating Film Fusion, Lightweight Jelly Texture Fits Like A Second Skin, Iridescent Gradient Color, Frosty Mint Oxygen Glow, Holiday Limited Edition, Korean Makeup, 5.5g/0.19oz I discovered amazing products on SHEIN.com, come check them out! https://onelink.shein.com/58/66o0szw7pv1q?shc=2_RsXvL2FkE4k';
+  eq('onelink طويل → url', route(en).kind, 'url');
+  eq('الرابط النظيف', route(en).url, 'https://onelink.shein.com/58/66o0szw7pv1q?shc=2_RsXvL2FkE4k');
+  eq('appjump طويل → url', route('ن '.repeat(200) + ' http://api-shein.shein.com/h5/sharejump/appjump?link=a_8&localcountry=SA').kind, 'url');
+  eq('صفحة منسوخة كاملة ما زالت url+text', route('x '.repeat(200) + ' https://us.shein.com/a-p-123456.html').kind, 'url+text');
+}
+
 console.log('\n' + (fail ? '❌ فشل ' + fail + ' / نجح ' + pass : '✅ كل الاختبارات ناجحة (' + pass + ')'));
 process.exit(fail ? 1 : 0);

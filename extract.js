@@ -589,7 +589,9 @@
     if (/^[{[]/.test(s)) return { kind: 'json' };
     const link = cleanUrl(s);
     const rest = s.replace(/https?:\/\/\S+/g, '').replace(/\s+/g, ' ').trim();
-    if (link && rest.length > 300) return { kind: 'url+text', url: link.url, source: link.source, text: s };
+    // رسالة مشاركة من تطبيق شي إن (اسم طويل + «اكتشفت منتجات…» + رابط) → الخادم دائمًا، مهما طال النص
+    const share = link && /^https?:\/\/(onelink\.shein\.com|([a-z0-9-]+\.)*shein\.top|([a-z0-9-]+\.)*api-shein\.shein\.com\/h5\/sharejump)\b/i.test(link.url);
+    if (link && rest.length > 300 && !share) return { kind: 'url+text', url: link.url, source: link.source, text: s };
     if (link) return { kind: 'url', url: link.url, source: link.source };
     return { kind: 'text', text: s };
   }

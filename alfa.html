@@ -337,8 +337,8 @@ async function oneGo() {
     if (j.ok) { previewImport(j); applyImport(j); msg.textContent = 'تم الاستخراج من النص ✓'; return; }
   }
 
-  // رابط فقط → ① نستخرج الرابط والاسم فورًا (بلا شبكة) ثم ② نحاول إثراء البيانات
-  if (R.kind === 'url') {
+  // رابط (أو رابط + نص ما طلع منه شي) → ① نستخرج الرابط والاسم فورًا (بلا شبكة) ثم ② نجلب من الخادم
+  if (R.kind === 'url' || R.kind === 'url+text') {
     const dup = products.find(p => p.source_url === link.url);
     if (dup && !editing) return toast('المنتج موجود مسبقًا: ' + dup.code);
 

@@ -5,8 +5,10 @@
 //   • طلب يدّعي أنه متصفح كروم   → يتحوّل غالبًا إلى /risk/challenge (تحقق بشري) — أحيانًا يمرّ أول مرة فقط.
 //   • طلب ببصمة بوت معاينة الروابط (Twitterbot — نفس ما يرسله تويتر/تيليجرام لعرض معاينة الرابط)
 //     → الصفحة كاملة: JSON-LD + gbRawData = الاسم والسعر والصور والمقاسات والألوان.
-//   • روابط المشاركة من التطبيق (api-shein.shein.com/h5/sharejump/...) صفحة وسيطة فيها اسم وصورة فقط
-//     → نأخذ منها رقم المنتج (goodsId) ونجلب صفحة المنتج الحقيقية.
+//   • روابط المشاركة من التطبيق صفحة وسيطة صغيرة (اسم + صورة واحدة) تحوّل المتصفح بالجافاسكربت:
+//       onelink.shein.com/..     → رقم المنتج في  <input id="deeplink" value="sheinlink://applink/goods?data={goods_id}">
+//       api-shein.shein.com/h5/sharejump/appjump → رقم المنتج في  shareInfo.id  (shareType = 8)
+//     → نأخذ الرقم ونجلب صفحة المنتج: ar.shein.com أولًا (متجر عربي) ثم us.shein.com (منتجات غير متوفرة في موقع).
 // تيمو: الصفحة تُرجع العنوان ووسوم meta، والسعر والألوان تُحمّل بالجافاسكربت → استخراج جزئي.
 
 const { fromHtml, cleanUrl, sourceOf } = require('../../extract.js');
@@ -65,25 +67,70 @@ async function fetchPage(target, ua = UA, ms = 20000, extra = {}) {
   return { status: r.status, html: await r.text(), finalUrl: r.url || target };
 }
 
-// رابط مشاركة من تطبيق شي إن؟
-const isShareJump = u => /(^|\.)api-shein\.shein\.com$/i.test(hostOf(u)) && /\/sharejump\//i.test(u);
-function hostOf(u) { try { return new URL(u).hostname; } catch (e) { return ''; } }
-
-// رقم المنتج من صفحة المشاركة الوسيطة
-function goodsIdOf(html) {
-  const s = String(html || '');
-  const m = s.match(/"goodsId"\s*:\s*"?(\d{5,})/) || s.match(/"deepLink"\s*:\s*"[^"]*?goods_id=(\d{5,})/)
-    || s.match(/"originalUrl"\s*:\s*"[^"]*?-p-(\d{5,})/);
-  return m ? m[1] : '';
+// رابط مشاركة من تطبيق شي إن؟ (onelink / appjump / shein.top)
+function isShareLink(u) {
+  let h = '', path = '';
+  try { const x = new URL(u); h = x.hostname.toLowerCase(); path = x.pathname; } catch (e) { return false; }
+  return h === 'onelink.shein.com' || /(^|\.)shein\.top$/.test(h) || (/(^|\.)api-shein\.shein\.com$/.test(h) && /\/sharejump\//i.test(path));
 }
 
-// موقع شي إن المناسب لرابط المشاركة: الدول العربية → ar.shein.com ، غيرها → us.shein.com
-const AR_CC = ['SA', 'AE', 'KW', 'QA', 'BH', 'OM', 'JO', 'LB', 'EG', 'IQ', 'MA', 'SY', 'PS', 'YE', 'LY', 'TN', 'DZ', 'SD'];
-function shareSite(shareUrl, html) {
-  let cc = '';
-  try { cc = (new URL(shareUrl).searchParams.get('localcountry') || '').toUpperCase(); } catch (e) {}
-  const lang = ((String(html || '').match(/"language"\s*:\s*"([a-z]{2})/i) || [])[1] || '').toLowerCase();
-  return (lang === 'ar' || AR_CC.includes(cc)) ? 'https://ar.shein.com' : 'https://us.shein.com';
+const unent = v => String(v).replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#0?39;/g, "'");
+
+// كائن JSON يبدأ بعد «name =» (بموازنة الأقواس)
+function jsonAfter(html, name) {
+  const i = html.indexOf(name);
+  if (i < 0) return null;
+  const j = html.indexOf('{', i);
+  if (j < 0 || j - i > 40) return null;
+  let depth = 0, inStr = false, esc = false;
+  for (let k = j; k < Math.min(html.length, j + 20000); k++) {
+    const c = html[k];
+    if (inStr) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue; }
+    if (c === '"') inStr = true;
+    else if (c === '{') depth++;
+    else if (c === '}' && --depth === 0) { try { return JSON.parse(html.slice(j, k + 1)); } catch (e) { return null; } }
+  }
+  return null;
+}
+
+// رقم المنتج من صفحة المشاركة الوسيطة
+function shareGoodsId(html) {
+  const s = String(html || '');
+  // onelink: <input id="deeplink" value="sheinlink://applink/goods?data=%7B%22goods_id%22%3A%2277417590%22...">
+  const dl = s.match(/id="deeplink"\s+value="([^"]+)"/i);
+  if (dl) {
+    const v = unent(dl[1]);
+    const m = v.match(/[?&]data=([^&]+)/);
+    if (m) { try { const d = JSON.parse(decodeURIComponent(m[1])); if (/^\d{5,}$/.test(String(d.goods_id || ''))) return String(d.goods_id); } catch (e) {} }
+    let dec = v; try { dec = decodeURIComponent(v); } catch (e) {}
+    const m2 = dec.match(/goods_id"?\s*[:=]\s*"?(\d{5,})/);
+    if (m2) return m2[1];
+  }
+  // appjump: shareInfo = {..."shareType":8,..."id":"77417590",...}
+  const info = jsonAfter(s, 'shareInfo');
+  if (info) {
+    if (/^\d{5,}$/.test(String(info.goodsId || ''))) return String(info.goodsId);
+    if (Number(info.shareType) === 8 && /^\d{5,}$/.test(String(info.id || ''))) return String(info.id);
+  }
+  // رابط منتج صريح داخل الصفحة (input id="url")
+  const u = s.match(/id="url"\s+value="([^"]+)"/i);
+  if (u) { const m3 = unent(u[1]).match(/-p-(\d{5,})/); if (m3) return m3[1]; }
+  return '';
+}
+
+// صفحة المنتج برقمه: الموقع العربي أولًا ثم الأمريكي (بعض المنتجات غير متوفرة في موقع)
+const SHEIN_SITES = ['https://ar.shein.com', 'https://us.shein.com'];
+async function sheinById(id, extra, timeLeft) {
+  for (const site of SHEIN_SITES) {
+    if (timeLeft() < 1500) break;
+    try {
+      const p = await fetchPage(site + '/x-p-' + id + '.html', UA_PREVIEW, Math.min(timeLeft(), 6000), extra);
+      if (classify(p.html, p.finalUrl) !== 'ok') continue;
+      const d = fromHtml(p.html, p.finalUrl);
+      if (d.ok && d.title) return { page: p, data: d };
+    } catch (e) { /* الموقع التالي */ }
+  }
+  return null;
 }
 
 // تصنيف ما وصل إلينا: صفحة منتج حقيقية / تحقق بشري / حجب صريح
@@ -104,6 +151,20 @@ const HINTS = {
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== 'GET') return reply(405, { error: 'method not allowed' });
+    // فحص مؤقت من خوادم Netlify: منتج ثابت + رابط مشاركة ثابت، يرجع ملخصًا فقط (لا يقبل أي رابط من الخارج)
+    if ((event.queryStringParameters || {}).selftest === '1') {
+      const t = Date.now(), X = { Cookie: 'currency=USD' }, out = {};
+      try {
+        const p = await fetchPage('https://ar.shein.com/x-p-28052129.html', UA_PREVIEW, 7000, X);
+        out.kind = classify(p.html, p.finalUrl);
+        const d = out.kind === 'ok' ? fromHtml(p.html, p.finalUrl) : null;
+        Object.assign(out, { title: !!(d && d.title), price: d && d.price, currency: d && d.currency, images: d ? d.images.length : 0, sizes: d ? d.sizes.length : 0, colors: d ? d.colors.length : 0 });
+        const o = await fetchPage('https://onelink.shein.com/48/5zhbyaow0j0l?shc=2_RpjwZgpn7rS', UA_PREVIEW, 2500).catch(() => null);
+        out.onelinkId = o ? shareGoodsId(o.html) : '';
+      } catch (e) { out.error = e.message; }
+      out.ms = Date.now() - t;
+      return reply(200, out);
+    }
     const h = event.headers || {};
     if (!(await isSignedIn(h.authorization || h.Authorization))) return reply(401, { error: 'سجّل الدخول أولاً' });
 
@@ -142,14 +203,18 @@ exports.handler = async (event) => {
       });
     }
 
-    // رابط مشاركة من التطبيق → صفحة المنتج الحقيقية
-    if (kind === 'ok' && isShareJump(page.finalUrl || cleaned.url)) {
-      const id = goodsIdOf(page.html);
-      if (id) {
-        try {
-          const p2 = await fetchPage(shareSite(cleaned.url, page.html) + '/x-p-' + id + '.html', UA_PREVIEW, left(), extra);
-          if (classify(p2.html, p2.finalUrl) === 'ok') page = p2;
-        } catch (e) { /* نكمل بما في صفحة المشاركة */ }
+    // شي إن: رابط مشاركة، أو صفحة بلا بيانات منتج → رقم المنتج → صفحة المنتج الحقيقية
+    let data = kind === 'ok' ? fromHtml(page.html, page.finalUrl) : null;
+    if (src === 'shein') {
+      const share = isShareLink(cleaned.url) || isShareLink(page.finalUrl || '');
+      const thin = !data || !data.ok || (data.price == null && !data.sizes.length && !data.colors.length && data.images.length <= 1);
+      if (share || thin) {
+        const id = (cleaned.url.match(/-p-(\d{5,})/) || [])[1] || (kind === 'ok' ? shareGoodsId(page.html) : '');
+        if (id) {
+          const timeLeft = () => BUDGET_MS - (Date.now() - t0);
+          const got = await sheinById(id, extra, timeLeft);
+          if (got) { page = got.page; kind = 'ok'; data = got.data; }
+        }
       }
     }
 
@@ -166,7 +231,7 @@ exports.handler = async (event) => {
       });
     }
 
-    const data = fromHtml(page.html, page.finalUrl);
+    data = data || fromHtml(page.html, page.finalUrl);
     data.via = 'direct';
     data.source = src;
 
