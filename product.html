@@ -38,7 +38,7 @@
 
   document.title = p.title + ' | ' + CONFIG.STORE_NAME;
   const imgs = (p.product_images || []).slice().sort((a, b) => a.sort_order - b.sort_order).map(i => i.url)
-    .filter(u => !/\/she_dist\/images\/|\/bg-grey[-.]/i.test(u));   // صورة شي إن الرمادية (تحميل) ليست صورة منتج
+    .filter(u => !isJunkImg(u));   // خلفية شي إن الرمادية (تحميل) ليست صورة منتج
   const V = p.product_variants || [];
   const uniq = a => [...new Set(a)];
   const colors = uniq(V.map(v => v.color).filter(Boolean));
@@ -74,7 +74,7 @@
         ${group('اللون', 'color', colors)}
         ${group('المقاس', 'size', sizes)}
         <p class="hint" role="status">${esc(msg)}</p>
-        ${p.description && !/\|\s*SHEIN\b|\bat SHEIN\b|Free\s+(shipping|returns)/i.test(p.description) ? `<p class="desc">${esc(p.description)}</p>` : ''}
+        ${storeDesc(p.description) ? `<p class="desc">${esc(storeDesc(p.description))}</p>` : ''}
       </div>
       <div class="dock"><div class="wrap dockin">
         <div class="stepper"><button data-q="1" aria-label="زيادة">+</button><span>${qty}</span><button data-q="-1" aria-label="نقصان">−</button></div>

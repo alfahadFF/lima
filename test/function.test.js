@@ -179,6 +179,43 @@ const call = (qs, headers = { authorization: 'Bearer tok' }) =>
     eq('بلا رقم منتج → جزئي', [r.body.ok, r.body.partial], [true, true]);
   }
 
+
+  console.log('\n[8] كل خيار بسعره: النقشات الأخرى (منتجات مستقلة) تُجلب ويُضاف سعر كل خيار');
+  {
+    let asked = [], failB = false;
+    global.fetch = async (url, opts) => {
+      const u = String(url);
+      if (u.includes('/auth/v1/user')) return new Response('{}', { status: 200 });
+      asked.push([u, opts.headers['User-Agent'], opts.headers.Cookie]);
+      if (u === 'https://ar.shein.com/x-p-453530243.html') return new Response(fix('shein-ar-pattern-a.html'), { status: 200 });
+      if (u === 'https://ar.shein.com/x-p-453108758.html') { if (failB) throw new Error('timeout'); return new Response(fix('shein-ar-pattern-b.html'), { status: 200 }); }
+      return new Response('', { status: 404 });
+    };
+    r = await call({ url: 'https://ar.shein.com/x-p-453530243.html' });
+    eq('جلب النقشة الثانية', asked.map(a => a[0]), ['https://ar.shein.com/x-p-453530243.html', 'https://ar.shein.com/x-p-453108758.html']);
+    eq('ببصمة المعاينة وبالدولار', [asked[1][1], asked[1][2]], ['Twitterbot/1.0', 'currency=USD']);
+    eq('نقشتان وصلتا', r.body.patterns, { total: 2, priced: 2 });
+    eq('4 خيارات بأسعارها ومخزونها', r.body.skus.map(v => [v.color, v.size, v.price, v.inStock]), [
+      ['متعدد الألوان', null, 13.18, true], ['قطعتين (رمادي ذهبي + شاي ذهبي)', null, 15.17, true],
+      ['أوراق الشاي بإطار ذهبي', null, 10.11, false], ['إطار فضي قطعة رمادية', null, 10.11, true]]);
+    eq('الألوان = أسماء الخيارات', r.body.colors.length, 4);
+    eq('السعر الأساسي = النقشة المشارَكة', r.body.price, 13.18);
+
+    asked = []; failB = true;
+    r = await call({ url: 'https://ar.shein.com/x-p-453530243.html' });
+    eq('نقشة ما وصلت ← ما تنضاف بسعر غلط', [r.body.ok, r.body.patterns, r.body.skus.length], [true, { total: 2, priced: 1 }, 1]);
+
+    asked = [];
+    global.fetch = async (url) => {
+      if (String(url).includes('/auth/v1/user')) return new Response('{}', { status: 200 });
+      asked.push(String(url));
+      return new Response(fix('shein-productgroup.html'), { status: 200 });
+    };
+    r = await call({ url: 'https://us.shein.com/x-p-28052129.html' });
+    eq('نقشة واحدة ← بلا جلب إضافي', asked.length, 1);
+    eq('المقاسات بأسعارها', r.body.skus.map(v => [v.color, v.size, v.price]), [['Khaki', 'XL', 63.08], ['Khaki', 'L', 63.08], ['Khaki', 'M', 63.08], ['Khaki', 'S', 63.08]]);
+  }
+
   global.fetch = realFetch;
   console.log('\n' + (fail ? '❌ فشل ' + fail + ' / نجح ' + pass : '✅ كل الاختبارات ناجحة (' + pass + ')'));
   process.exit(fail ? 1 : 0);

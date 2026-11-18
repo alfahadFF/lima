@@ -243,11 +243,26 @@ function genVariants() {
   variants = [];
   C.forEach(c => S.forEach(s => {
     const o = old.get((c || '') + '|' + (s || ''));
-    variants.push({ color: c, size: s, in_stock: o ? o.in_stock : true, price_override: o ? o.price_override : null });
+    variants.push({ color: c, size: s, in_stock: o ? o.in_stock : true, price_override: o ? o.price_override : null,
+      src: o ? o.src : undefined, manual: o ? !!o.manual : false });
   }));
   fieldsDirty = false;
+  optionPrices();
   renderVariants();
 }
+/* سعر كل خيار تلقائيًا: كل نقشة/خيار في شي إن له سعره (src) ← السعر الخاص = سعره × (1 + الهامش).
+   الخيار اللي سعره نفس السعر الأساسي يبقى بدون سعر خاص. تعديلك اليدوي لا يُلمس. */
+function optionPrices() {
+  const base = parseFloat($('#f-price').value), m = parseFloat($('#f-margin').value) || 0;
+  if (!(base >= 0)) return;
+  variants.forEach(v => {
+    if (v.src == null || v.manual) return;
+    v.price_override = Math.abs(v.src - base) > 0.005 ? Math.round(v.src * (1 + m / 100) * 100) / 100 : null;
+  });
+}
+['f-price', 'f-margin'].forEach(id => $('#' + id).addEventListener('input', () => {
+  if (variants.some(v => v.src != null)) { optionPrices(); renderVariants(); }
+}));
 function renderVariants() {
   $('#vlist').innerHTML = variants.length ? variants.map((v, i) => `<div class="vrow">
     <span>${esc(v.color || 'بدون لون')} / ${esc(v.size || 'بدون مقاس')}</span>
@@ -258,7 +273,7 @@ function renderVariants() {
 $('#gen').addEventListener('click', genVariants);
 $('#vlist').addEventListener('change', e => {
   const t = e.target;
-  if (t.dataset.vp !== undefined) variants[+t.dataset.vp].price_override = t.value === '' ? null : parseFloat(t.value);
+  if (t.dataset.vp !== undefined) { const v = variants[+t.dataset.vp]; v.price_override = t.value === '' ? null : parseFloat(t.value); v.manual = true; }
   if (t.dataset.vs !== undefined) variants[+t.dataset.vs].in_stock = t.checked;
 });
 
@@ -291,9 +306,18 @@ function applyImport(j) {
   $('#f-images').value = (j.images || []).join('\n');
   $('#f-colors').value = (j.colors || []).join('، ');
   $('#f-sizes').value = (j.sizes || []).join('، ');
-  genVariants();
-  const out = new Set(j.soldOut || []);
-  variants.forEach(v => { if (v.size && out.has(v.size)) v.in_stock = false; });
+  variants = [];
+  if ((j.skus || []).length) {
+    // كل خيار كما في شي إن: سعره ومخزونه (نقشات منفصلة، مقاسات، أو خيارات مثل «لون العدسات»)
+    variants = j.skus.map(v => ({ color: v.color || null, size: v.size || null, in_stock: v.inStock !== false,
+      price_override: null, src: v.price, manual: false }));
+    fieldsDirty = false;
+    optionPrices();
+  } else {
+    genVariants();
+    const out = new Set(j.soldOut || []);
+    variants.forEach(v => { if (v.size && out.has(v.size)) v.in_stock = false; });
+  }
   renderVariants(); calcFinal();
   const cur = String(j.currency || '').toUpperCase();
   const bits = [j.title ? 'اسم ✓' : 'اسم ✗', j.price != null ? 'سعر ✓' : 'سعر ✗', (j.images || []).length + ' صورة'];
@@ -313,6 +337,9 @@ function previewImport(j) {
     <div class="muted">المقاسات: ${(j.sizes || []).length ? esc(j.sizes.join('، ')) : '<span style="color:var(--bad)">✗</span>'}</div>
     <div class="muted">الألوان: ${(j.colors || []).length ? esc(j.colors.join('، ')) : '<span style="color:var(--bad)">✗</span>'}</div>
     ${(j.soldOut || []).length ? `<div class="muted">نافد: ${esc(j.soldOut.join('، '))}</div>` : ''}
+    ${(j.skus || []).some(v => Math.abs(v.price - j.price) > 0.005) ? `<div class="muted">سعر كل خيار (شي إن): ${j.skus.slice(0, 24).map(v =>
+      esc([v.color, v.size].filter(Boolean).join(' / ') || '—') + ' <bdi>' + esc(v.price) + '</bdi>' + (v.inStock ? '' : ' (نافد)')).join('، ')}</div>` : ''}
+    ${j.patterns && j.patterns.priced < j.patterns.total ? `<div class="muted" style="color:var(--bad)">${j.patterns.total - j.patterns.priced} نقشة ما وصلت صفحتها — ما انضافت</div>` : ''}
   </div>`;
 }
 

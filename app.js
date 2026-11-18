@@ -6,8 +6,27 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const money = n => CONFIG.CURRENCY + (Math.round(Number(n) * 100) / 100).toLocaleString('en-US', { maximumFractionDigits: 2 });
 const empty = m => `<p class="empty">${esc(m)}</p>`;
 const configReady = () => !/YOUR-/.test(CONFIG.SUPABASE_URL + CONFIG.SUPABASE_ANON_KEY);
-const imgOf = list => (list || []).slice().sort((a, b) => a.sort_order - b.sort_order)[0];
-const img = (url, alt = '') => url ? `<img loading="lazy" referrerpolicy="no-referrer" src="${esc(url)}" alt="${esc(alt)}">` : '';
+// الصور: خلفية التحميل الرمادية من شي إن («SHEIN» على رمادي) ليست صورة منتج،
+// وأي صورة ما تتحمل يظهر مكانها شعار واسم «ليمار ستور»
+const isJunkImg = u => /\/she_dist\/images\/|\/bg-grey[-.]|placeholder/i.test(String(u || ''));
+const NOIMG = '<span class="noimg-store" role="img" aria-label="ليمار ستور"><img src="icons/logo-mark.png" alt=""><b>ليمار ستور</b></span>';
+function imgFail(el) { el.onerror = null; el.insertAdjacentHTML('afterend', NOIMG); el.remove(); }
+const imgOf = list => (list || []).filter(i => i && !isJunkImg(i.url)).sort((a, b) => a.sort_order - b.sort_order)[0];
+const img = (url, alt = '') => !url ? '' : isJunkImg(url) ? NOIMG
+  : `<img loading="lazy" referrerpolicy="no-referrer" src="${esc(url)}" alt="${esc(alt)}" onerror="imgFail(this)">`;
+
+// وصف محفوظ من شي إن: بدون سعر شي إن وسياساتها، و«ليمار ستور» بدل شي إن (نفس منطق storeDesc في extract.js)
+function storeDesc(d) {
+  let s = String(d || '').replace(/[ \t]+/g, ' ').trim();
+  if (!s) return '';
+  if (/\|\s*SHEIN\b|Free\s+(shipping|returns)/i.test(s)) return '';
+  s = s.replace(/I\s+(?:discovered|found)\s+(?:some\s+)?(?:amazing|great|awesome)\s+(?:products|items)\s+(?:on|at)\s+SHEIN(?:\.com)?\s*[,،]?\s*come\s+check\s+(?:them|it)\s+out\s*!?/gi,
+    'اكتشفت منتجات رائعة في ليمار ستور، تعال وتحقق منها!');
+  s = s.replace(/[^.!؟?\n]*(?:الدفع عند الاستلام|شحن مجاني|الشحن المجاني|إرجاع مجاني|الإرجاع المجاني)[^.!؟?\n]*[.!؟?]?/g, ' ');
+  s = s.replace(/(^|[\s(])(?:في|على)\s+(?:SHEIN(?:\.com)?|شي\s?[إاأ]ن)(?!\s*ليمار)/gi, '$1في ليمار ستور')
+    .replace(/(^|[\s(])من\s+(?:SHEIN(?:\.com)?|شي\s?[إاأ]ن)(?!\s*ليمار)/gi, '$1من ليمار ستور');
+  return s.replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+([،.!؟])/g, '$1').trim();
+}
 
 // السلة (localStorage مع احتياط بالذاكرة إذا كان التخزين ممنوعاً)
 let memCart = [];

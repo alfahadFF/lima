@@ -83,7 +83,7 @@ function jsonAfter(html, name) {
   const j = html.indexOf('{', i);
   if (j < 0 || j - i > 40) return null;
   let depth = 0, inStr = false, esc = false;
-  for (let k = j; k < Math.min(html.length, j + 20000); k++) {
+  for (let k = j; k < Math.min(html.length, j + 300000); k++) {
     const c = html[k];
     if (inStr) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue; }
     if (c === '"') inStr = true;
@@ -131,6 +131,77 @@ async function sheinById(id, extra, timeLeft) {
     } catch (e) { /* الموقع التالي */ }
   }
   return null;
+}
+
+// نقشات/ألوان شي إن: كل نقشة منتج مستقل (goods_id) بسعره — قائمتها في mainSaleAttribute.info بصفحة المنتج.
+// نأخذ القائمة التي تحتوي المنتج الحالي فقط (الصفحة فيها قوائم أخرى لمنتجات مقترحة).
+function sheinPatterns(html, curId) {
+  const s = String(html || '');
+  if (!curId) return [];
+  let info = null;
+  for (let from = 0, n = 0; n < 8; n++) {
+    const i = s.indexOf('"mainSaleAttribute"', from);
+    if (i < 0) break;
+    from = i + 20;
+    const m = jsonAfter(s.slice(i, i + 300000), '"mainSaleAttribute"');
+    const list = m && Array.isArray(m.info) ? m.info : null;
+    if (list && list.some(x => String(x && x.goods_id) === curId)) { info = list; break; }
+  }
+  const out = [], count = {};
+  for (const x of info || []) {
+    const id = String((x && x.goods_id) || ''), name = String((x && x.attr_value) || '').trim();
+    if (!/^\d{5,}$/.test(id) || !name || out.some(p => p.id === id)) continue;
+    count[name] = (count[name] || 0) + 1;                       // نقشتان بنفس الاسم ← «الاسم (2)» حتى يختار الزبون بينهما
+    out.push({ id, name: count[name] > 1 ? name + ' (' + count[name] + ')' : name });
+  }
+  return out;
+}
+
+// موقع الصفحة نفسها لجلب باقي النقشات بنفس اللغة: https://ar.shein.com أو https://m.shein.com/ar
+function siteOf(u) {
+  try {
+    const x = new URL(u), seg = x.pathname.split('/')[1] || '';
+    return x.origin + (/^m\./i.test(x.hostname) && /^[a-z]{2,3}$/i.test(seg) ? '/' + seg : '');
+  } catch (e) { return 'https://ar.shein.com'; }
+}
+
+// كل خيارات المنتج بأسعارها ومخزونها:
+//   • داخل الصفحة: كل خيار (مقاس، أو خيار باسم خاص مثل «لون العدسات») له سعره في JSON-LD
+//   • النقشات الأخرى منتجات مستقلة ← نجلب صفحاتها بالتوازي (ضمن مهلة الدالة) ونضيف خياراتها
+const MAX_PATTERNS = 16;
+async function sheinOptions(page, data, extra, timeLeft) {
+  const curId = (String(page.finalUrl || '').match(/-p-(\d{5,})/) || [])[1] || '';
+  const pats = sheinPatterns(page.html, curId);
+  const cur = pats.find(p => p.id === curId);
+  const pages = [{ name: cur ? cur.name : '', d: data }];
+  if (pats.length > 1) {
+    const site = siteOf(page.finalUrl);
+    const got = await Promise.all(pats.filter(p => p !== cur).slice(0, MAX_PATTERNS).map(async p => {
+      if (timeLeft() < 2000) return null;
+      try {
+        const pg = await fetchPage(site + '/x-p-' + p.id + '.html', UA_PREVIEW, Math.min(5000, timeLeft() - 800), extra);
+        if (classify(pg.html, pg.finalUrl) !== 'ok') return null;
+        const d = fromHtml(pg.html, pg.finalUrl);
+        return d.ok && d.price != null && d.currency === data.currency ? { name: p.name, d } : null;
+      } catch (e) { return null; }   // نقشة ما وصلت ← ما نعرضها بسعر غلط
+    }));
+    got.forEach(g => { if (g) pages.push(g); });
+  }
+  const skus = [], owner = new Map();
+  for (const { name, d } of pages) {
+    const pattern = name || d.groupColor || (d.colors || [])[0] || null;
+    const list = (d.skus || []).length ? d.skus : [{ color: null, size: null, price: d.price, inStock: true }];
+    for (const v of list) {
+      // خيار باسم خاص داخل النقشة (مثل «لون العدسات») ← اسمه، وإلا اسم النقشة
+      let color = v.color && v.color !== d.groupColor ? v.color : pattern;
+      const k = () => (color || '') + '|' + (v.size || '');
+      if (owner.has(k()) && owner.get(k()) !== pattern && pattern) color = (color || '') + ' (' + pattern + ')';   // نفس الاسم في نقشتين
+      if (owner.has(k())) continue;
+      owner.set(k(), pattern);
+      skus.push({ color: color || null, size: v.size || null, price: v.price != null ? v.price : d.price, inStock: v.inStock !== false });
+    }
+  }
+  return { skus, total: Math.max(1, pats.length), priced: pages.length };
 }
 
 // تصنيف ما وصل إلينا: صفحة منتج حقيقية / تحقق بشري / حجب صريح
@@ -220,6 +291,18 @@ exports.handler = async (event) => {
     data = data || fromHtml(page.html, page.finalUrl);
     data.via = 'direct';
     data.source = src;
+
+    // شي إن: كل خيار/نقشة بسعره ومخزونه
+    if (src === 'shein' && data.ok && data.price != null && (data.skus || []).length) {
+      const op = await sheinOptions(page, data, extra, () => BUDGET_MS - (Date.now() - t0)).catch(() => null);
+      if (op && op.skus.length) {
+        const uniq = a => [...new Set(a.filter(Boolean))];
+        data.skus = op.skus;
+        data.colors = uniq(op.skus.map(v => v.color));
+        data.sizes = uniq(op.skus.map(v => v.size));
+        data.patterns = { total: op.total, priced: op.priced };
+      }
+    }
 
     if (!data.ok) {
       data.blocked = false;

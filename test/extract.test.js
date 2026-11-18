@@ -213,5 +213,32 @@ console.log('\n[وصف] نص شي إن الجاهز (فيه سعر شي إن) ل
   ok('ولا «at SHEIN» من ProductGroup', !/SHEIN/i.test(g.description), g.description);
 }
 
+
+console.log('\n[وصف المتجر] شي إن ← ليمار ستور');
+{
+  const { storeDesc } = require('../extract.js');
+  eq('وصف شي إن العربي: «في ليمار ستور» بدون سياسات شي إن',
+    storeDesc('اكتشفوا أحدث قلادة ذهبية في شي إن، وتسوقوا إكسسوارات نسائية مع أكثر صيحات الموضة روعة. خدمة طلبات الدفع عند الاستلام لدول مجلس التعاون الخليج.  شحن مجاني للطلبات SAR199+ للسعودية.'),
+    'اكتشفوا أحدث قلادة ذهبية في ليمار ستور، وتسوقوا إكسسوارات نسائية مع أكثر صيحات الموضة روعة.');
+  eq('جملة المشاركة', storeDesc('I discovered amazing products on SHEIN.com, come check them out!'), 'اكتشفت منتجات رائعة في ليمار ستور، تعال وتحقق منها!');
+  eq('جملة المشاركة بالعربي', storeDesc('لقد اكتشفت منتجات رائعة على SHEIN.com، تعال وتحقق منها!'), 'لقد اكتشفت منتجات رائعة في ليمار ستور، تعال وتحقق منها!');
+  eq('وصف فيه سعر شي إن ← فارغ', storeDesc('قلادة. $13.72. Free shipping & returns | SHEIN'), '');
+  eq('اسم المتجر لا يُلمس', storeDesc('من شي ان ليمار ستور'), 'من شي ان ليمار ستور');
+  eq('وصف عادي كما هو', storeDesc('قطن 100%، مريح.'), 'قطن 100%، مريح.');
+  const a = fromHtml(fix('shein-ar-pattern-a.html'), 'https://ar.shein.com/x-p-453530243.html');
+  ok('صفحة عربية حقيقية: الوصف فيه «في ليمار ستور»', /في ليمار ستور/.test(a.description) && !/شي إن|SHEIN|الدفع عند الاستلام|SAR/.test(a.description), a.description);
+}
+
+console.log('\n[خيارات] كل خيار بسعره ومخزونه (JSON-LD)');
+{
+  const g = fromHtml(fix('shein-productgroup.html'), 'https://us.shein.com/x-p-28052129.html');
+  eq('مقاسات كخيارات', g.skus.map(v => v.size), ['XL', 'L', 'M', 'S']);
+  ok('كل خيار بسعره', g.skus.every(v => v.price === 63.08));
+  eq('لون المجموعة', g.groupColor, 'Khaki');
+  const b = fromHtml(fix('shein-ar-pattern-b.html'), 'https://ar.shein.com/x-p-453108758.html');
+  eq('خيارات «لون العدسات» بأسعار مختلفة', b.skus.map(v => [v.color, v.price, v.inStock]),
+    [['قطعتين (رمادي ذهبي + شاي ذهبي)', 15.17, true], ['أوراق الشاي بإطار ذهبي', 10.11, false], ['إطار فضي قطعة رمادية', 10.11, true]]);
+}
+
 console.log('\n' + (fail ? '❌ فشل ' + fail + ' / نجح ' + pass : '✅ كل الاختبارات ناجحة (' + pass + ')'));
 process.exit(fail ? 1 : 0);

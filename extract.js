@@ -40,6 +40,24 @@
 
   const stripHtml = s => decode(String(s || '').replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
 
+  /* وصف شي إن ← وصف المتجر:
+     • «الاسم. $13.72. Free shipping & returns | SHEIN» و «Free Returns ✓ … at SHEIN.» ← فيها سعر شي إن وسياساتها: تُحذف
+     • «I discovered amazing products on SHEIN.com, come check them out!» ← «اكتشفت منتجات رائعة في ليمار ستور…»
+     • «اكتشفوا أحدث … في شي إن، … خدمة الدفع عند الاستلام لدول الخليج. شحن مجاني …» ← «… في ليمار ستور …» بدون سياسات شي إن
+     • «شي ان ليمار ستور» (اسم المتجر) لا يُلمس */
+  const STORE_AR = 'ليمار ستور';
+  function storeDesc(d) {
+    let s = stripHtml(String(d || '')).replace(/\s+/g, ' ').trim();
+    if (!s) return '';
+    if (/\|\s*SHEIN\b|Free\s+(shipping|returns)/i.test(s)) return '';
+    s = s.replace(/I\s+(?:discovered|found)\s+(?:some\s+)?(?:amazing|great|awesome)\s+(?:products|items)\s+(?:on|at)\s+SHEIN(?:\.com)?\s*[,،]?\s*come\s+check\s+(?:them|it)\s+out\s*!?/gi,
+      'اكتشفت منتجات رائعة في ' + STORE_AR + '، تعال وتحقق منها!');
+    s = s.replace(/[^.!؟?]*(?:الدفع عند الاستلام|شحن مجاني|الشحن المجاني|إرجاع مجاني|الإرجاع المجاني)[^.!؟?]*[.!؟?]?/g, ' ');
+    s = s.replace(/(^|[\s(])(?:في|على)\s+(?:SHEIN(?:\.com)?|شي\s?[إاأ]ن)(?!\s*ليمار)/gi, '$1في ' + STORE_AR)
+      .replace(/(^|[\s(])من\s+(?:SHEIN(?:\.com)?|شي\s?[إاأ]ن)(?!\s*ليمار)/gi, '$1من ' + STORE_AR);
+    return s.replace(/\s{2,}/g, ' ').replace(/\s+([،.!؟])/g, '$1').trim().slice(0, 1500);
+  }
+
   function tidyTitle(t) {
     if (/\[goods_name\]/i.test(String(t || ''))) return '';   // صفحة شي إن لمنتج محذوف (قالب فارغ)
     return stripHtml(t)
@@ -221,16 +239,23 @@
       return list;
     };
     // شي إن: الاسم الصحيح في ProductGroup — أسماء الخيارات تنتهي بـ «- Size XL» / «- مقاس XL»
-    let groupName = '';
+    let groupName = '', groupDesc = '', groupColor = '';
     const findGroup = (n) => {
       if (groupName || !n || typeof n !== 'object') return;
       if (Array.isArray(n)) return n.forEach(findGroup);
       const t = n['@type'];
-      if ((t === 'ProductGroup' || (Array.isArray(t) && t.includes('ProductGroup'))) && typeof n.name === 'string' && n.name.trim()) { groupName = n.name; return; }
+      if ((t === 'ProductGroup' || (Array.isArray(t) && t.includes('ProductGroup'))) && typeof n.name === 'string' && n.name.trim()) {
+        groupName = n.name; groupDesc = typeof n.description === 'string' ? n.description : '';
+        groupColor = typeof n.color === 'string' ? n.color.trim() : ''; return;
+      }
       for (const k in n) if (n[k] && typeof n[k] === 'object') findGroup(n[k]);
     };
     for (const b of blobs) if (b.tag === 'jsonld') findGroup(b.val);
     if (groupName) out.title = groupName;
+    out.groupDescription = groupDesc;
+    out.groupColor = groupColor;
+    // كل خيار (SKU) بسعره ومخزونه — شي إن: hasVariant فيه color أو size لكل خيار مع offers خاصة به
+    out.skus = [];
 
     for (const b of blobs) {
       if (b.tag !== 'jsonld') continue;
@@ -248,6 +273,13 @@
         }
         if (p.color) out.colors = [].concat(p.color).filter((x) => typeof x === 'string');
         if (p.size) out.sizes = [].concat(p.size).filter((x) => typeof x === 'string');
+        const pr = offers ? num(offers.price ?? offers.lowPrice) : null;
+        if (pr != null && pr > 0) out.skus.push({
+          color: typeof p.color === 'string' && p.color.trim() ? p.color.trim() : null,
+          size: typeof p.size === 'string' && p.size.trim() ? p.size.trim() : null,
+          price: pr,
+          inStock: !/OutOfStock|SoldOut|Discontinued/i.test(String(offers.availability || ''))
+        });
       }
     }
     return out;
@@ -312,9 +344,9 @@
     images = dedupeImages(images).slice(0, 12);
     if (!images.length) notes.push('لم نجد صور المنتج — الصق روابطها يدويًا.');
 
-    let description = stripHtml(ld.description || meta['og:description'] || meta['description'] || '').slice(0, 1500);
-    // وصف شي إن الجاهز للبحث: «الاسم. $13.72. Free shipping & returns | SHEIN» — فيه سعر شي إن، ما بينعرض للزبون
-    if (/\|\s*SHEIN\b|\bat SHEIN\b|Free\s+(shipping|returns)/i.test(description)) description = '';
+    // أول وصف صالح بعد تنظيفه من سعر شي إن وسياساتها واسمها (← «ليمار ستور»)
+    const description = [ld.description, ld.groupDescription, meta['description'], meta['og:description']]
+      .map(storeDesc).find(Boolean) || '';
 
     // الخيارات: الحالة المدمجة (أو SKU) ← JSON-LD
     let colors = uniqStrings(cand.colors);
@@ -344,6 +376,8 @@
       sizes,
       soldOut: skuOut.soldOut,
       inStock: skuOut.inStock,
+      skus: (ld.skus || []).length > 0 ? ld.skus : [],
+      groupColor: ld.groupColor || '',
       confidence,
       notes,
       debug: { blobs: blobs.map((b) => b.tag), imagesFound: images.length }
@@ -612,5 +646,5 @@
     return { url: u.origin + u.pathname + (u.search ? '?' + u.searchParams.toString() : ''), source: sourceOf(u.href) };
   }
 
-  return { fromHtml, fromText, fromShare, cleanUrl, route, sourceOf, tidyTitle, tidyImage, version: '1.4.2' };
+  return { fromHtml, fromText, fromShare, cleanUrl, route, sourceOf, tidyTitle, tidyImage, storeDesc, version: '1.5.0' };
 }));
