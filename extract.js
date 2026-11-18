@@ -41,6 +41,7 @@
   const stripHtml = s => decode(String(s || '').replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
 
   function tidyTitle(t) {
+    if (/\[goods_name\]/i.test(String(t || ''))) return '';   // صفحة شي إن لمنتج محذوف (قالب فارغ)
     return stripHtml(t)
       .replace(/\s*[|\-–]\s*(SHEIN|Temu|AliExpress|1688)\s*$/i, '')
       .replace(/\s*(Wholesale|Free Shipping|Online)\s*$/i, '')
@@ -219,6 +220,18 @@
       collect(val);
       return list;
     };
+    // شي إن: الاسم الصحيح في ProductGroup — أسماء الخيارات تنتهي بـ «- Size XL» / «- مقاس XL»
+    let groupName = '';
+    const findGroup = (n) => {
+      if (groupName || !n || typeof n !== 'object') return;
+      if (Array.isArray(n)) return n.forEach(findGroup);
+      const t = n['@type'];
+      if ((t === 'ProductGroup' || (Array.isArray(t) && t.includes('ProductGroup'))) && typeof n.name === 'string' && n.name.trim()) { groupName = n.name; return; }
+      for (const k in n) if (n[k] && typeof n[k] === 'object') findGroup(n[k]);
+    };
+    for (const b of blobs) if (b.tag === 'jsonld') findGroup(b.val);
+    if (groupName) out.title = groupName;
+
     for (const b of blobs) {
       if (b.tag !== 'jsonld') continue;
       for (const p of findProduct(b.val)) {
@@ -354,7 +367,9 @@
     for (const raw of list) {
       const u = tidyImage(raw);
       if (!u) continue;
-      const key = u.split('?')[0].replace(/\/\d+x\d+\//, '/').toLowerCase();
+      // نفس الصورة بصيغ مختلفة (.jpg / .webp / _thumbnail_720x) = صورة واحدة
+      const key = u.split('?')[0].replace(/\/\d+x\d+\//, '/').replace(/_thumbnail_[^.\/]*/i, '')
+        .replace(/\.(jpe?g|png|webp|avif|gif)$/i, '').toLowerCase();
       if (seen.has(key)) continue;
       seen.set(key, u);
     }
@@ -592,5 +607,5 @@
     return { url: u.origin + u.pathname + (u.search ? '?' + u.searchParams.toString() : ''), source: sourceOf(u.href) };
   }
 
-  return { fromHtml, fromText, fromShare, cleanUrl, route, sourceOf, tidyTitle, tidyImage, version: '1.3.0' };
+  return { fromHtml, fromText, fromShare, cleanUrl, route, sourceOf, tidyTitle, tidyImage, version: '1.4.0' };
 }));

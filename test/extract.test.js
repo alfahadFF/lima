@@ -164,5 +164,26 @@ console.log('\n[11] لصق الرابط → رابط + اسم (بلا شبكة)'
   ok('تنبيه أن الباقي يدوي', fromShare('https://us.shein.com/a-b-p-1.html') !== null);
 }
 
+
+console.log('\n[شي إن 2026] ProductGroup حقيقي (مأخوذ من صفحة us.shein.com فعلية)');
+{
+  const r = fromHtml(fix('shein-productgroup.html'), 'https://us.shein.com/SHEIN-Essnce-Women-s-Round-Neck-Short-Sleeve-Sweater-p-28052129.html');
+  eq('الاسم بلا «- Size XL»', r.title, "Chiquease Women's Round Neck Short Sleeve Sweater");
+  eq('السعر', r.price, 63.08);
+  eq('المقاسات', r.sizes.slice().sort(), ['L', 'M', 'S', 'XL']);
+  eq('اللون', r.colors, ['Khaki']);
+  const keys = r.images.map(u => u.replace(/_thumbnail_[^.\/]*/, '').replace(/\.(jpe?g|webp|png|avif)$/, ''));
+  eq('لا تكرار لنفس الصورة بصيغ مختلفة', new Set(keys).size, r.images.length);
+  ok('5 صور على الأقل', r.images.length >= 5, r.images.length);
+}
+
+
+console.log('\n[شي إن] منتج محذوف (قالب [goods_name])');
+{
+  const r = fromHtml('<html><head><title>[goods_name] | SHEIN USA</title><meta property="og:image" content="https://img.ltwebstatic.com/x.jpg"><meta name="description" content="Free Returns ✓. [goods_name]- [cat_name] at SHEIN."></head><body>' + 'x'.repeat(600) + '</body></html>', 'https://us.shein.com/x-p-13804802.html');
+  eq('لا يُعبّأ اسم وهمي', r.title, '');
+  eq('ok=false', r.ok, false);
+}
+
 console.log('\n' + (fail ? '❌ فشل ' + fail + ' / نجح ' + pass : '✅ كل الاختبارات ناجحة (' + pass + ')'));
 process.exit(fail ? 1 : 0);
