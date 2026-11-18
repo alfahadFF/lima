@@ -195,5 +195,23 @@ console.log('\n[توجيه] رسالة مشاركة من التطبيق تروح
   eq('صفحة منسوخة كاملة ما زالت url+text', route('x '.repeat(200) + ' https://us.shein.com/a-p-123456.html').kind, 'url+text');
 }
 
+
+console.log('\n[صور] خلفية التحميل الرمادية من شي إن لا تُحفظ كصورة منتج');
+{
+  const r = fromHtml('<html><head><title>Necklace - SHEIN</title><meta property="og:title" content="Gold Necklace"><meta property="og:image" content="https://sc.ltwebstatic.com/she_dist/images/bg-grey-ba96515e9b.png"><script type="application/ld+json">{"@type":"Product","name":"Gold Necklace","image":["https://img.ltwebstatic.com/images3_spmp/2024/10/16/88/a_thumbnail_900x.webp","https://sc.ltwebstatic.com/she_dist/images/bg-grey-ba96515e9b.png"],"offers":{"price":"5.2","priceCurrency":"USD"}}</script></head><body>' + 'x'.repeat(600) + '</body></html>', 'https://ar.shein.com/x-p-1234567.html');
+  ok('بلا bg-grey', !r.images.some(u => /bg-grey|she_dist/.test(u)), JSON.stringify(r.images));
+  eq('صورة المنتج فقط', r.images.length, 1);
+}
+
+
+console.log('\n[وصف] نص شي إن الجاهز (فيه سعر شي إن) لا يُحفظ كوصف');
+{
+  const r = fromHtml('<html><head><meta property="og:title" content="قلادة ذهبية"><meta property="og:description" content="قلادة ذهبية بتصميم عتيق. $13.72. Free shipping &amp; returns | SHEIN"><meta property="og:image" content="https://img.ltwebstatic.com/images3_spmp/2024/a.jpg"><script type="application/ld+json">{"@type":"Product","name":"قلادة ذهبية","offers":{"price":"14.66","priceCurrency":"USD"}}</script></head><body>' + 'x'.repeat(600) + '</body></html>', 'https://ar.shein.com/x-p-1234567.html');
+  eq('الوصف فارغ', r.description, '');
+  ok('المنتج نفسه سليم', r.ok && r.price === 14.66, JSON.stringify([r.ok, r.price]));
+  const g = fromHtml(fix('shein-productgroup.html'), 'https://us.shein.com/x-p-28052129.html');
+  ok('ولا «at SHEIN» من ProductGroup', !/SHEIN/i.test(g.description), g.description);
+}
+
 console.log('\n' + (fail ? '❌ فشل ' + fail + ' / نجح ' + pass : '✅ كل الاختبارات ناجحة (' + pass + ')'));
 process.exit(fail ? 1 : 0);

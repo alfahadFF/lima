@@ -312,7 +312,9 @@
     images = dedupeImages(images).slice(0, 12);
     if (!images.length) notes.push('لم نجد صور المنتج — الصق روابطها يدويًا.');
 
-    const description = stripHtml(ld.description || meta['og:description'] || meta['description'] || '').slice(0, 1500);
+    let description = stripHtml(ld.description || meta['og:description'] || meta['description'] || '').slice(0, 1500);
+    // وصف شي إن الجاهز للبحث: «الاسم. $13.72. Free shipping & returns | SHEIN» — فيه سعر شي إن، ما بينعرض للزبون
+    if (/\|\s*SHEIN\b|\bat SHEIN\b|Free\s+(shipping|returns)/i.test(description)) description = '';
 
     // الخيارات: الحالة المدمجة (أو SKU) ← JSON-LD
     let colors = uniqStrings(cand.colors);
@@ -367,6 +369,7 @@
     for (const raw of list) {
       const u = tidyImage(raw);
       if (!u) continue;
+      if (/\/she_dist\/images\/|\/bg-grey[-.]|placeholder/i.test(u)) continue;   // صور الموقع (خلفية التحميل الرمادية) ليست صور منتج
       // نفس الصورة بصيغ مختلفة (.jpg / .webp / _thumbnail_720x) = صورة واحدة
       const key = u.split('?')[0].replace(/\/\d+x\d+\//, '/').replace(/_thumbnail_[^.\/]*/i, '')
         .replace(/\.(jpe?g|png|webp|avif|gif)$/i, '').toLowerCase();
@@ -609,5 +612,5 @@
     return { url: u.origin + u.pathname + (u.search ? '?' + u.searchParams.toString() : ''), source: sourceOf(u.href) };
   }
 
-  return { fromHtml, fromText, fromShare, cleanUrl, route, sourceOf, tidyTitle, tidyImage, version: '1.4.0' };
+  return { fromHtml, fromText, fromShare, cleanUrl, route, sourceOf, tidyTitle, tidyImage, version: '1.4.2' };
 }));
