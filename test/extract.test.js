@@ -240,5 +240,22 @@ console.log('\n[خيارات] كل خيار بسعره ومخزونه (JSON-LD)'
     [['قطعتين (رمادي ذهبي + شاي ذهبي)', 15.17, true], ['أوراق الشاي بإطار ذهبي', 10.11, false], ['إطار فضي قطعة رمادية', 10.11, true]]);
 }
 
+
+console.log('\n[تصنيف] سلسلة تصنيف شي إن الحقيقية (رئيسي ← فرعي ← …)');
+{
+  const a = fromHtml(fix('shein-ar-pattern-a.html'), 'https://ar.shein.com/x-p-453530243.html');
+  eq('الأسماء بالترتيب', a.categories.map(n => n.name), ['ملابس واكسسوارات', 'اكسسوارات نسائية', 'نظارات نسائية وإكسسوارات نظارات', 'نظارات شمسية نسائية']);
+  eq('المسار لكل قسم', a.categories.map(n => n.path.join('.')), ['3631', '3631.1765', '3631.1765.2841', '3631.1765.2841.3927']);
+  const { categoryPath } = require('../extract.js');
+  const ci = '<script>x={"cateInfos":{"1734":{"category_name":"سويترات نسائية","parent_ids":["4436","2030","2216","1734"],"is_leaf":"1"},"2030":{"category_name":"ملابس نسائية","parent_ids":["4436"],"is_leaf":"0"},"2216":{"category_name":"ملابسة منسوجة نسائية","parent_ids":["4436","2030"],"is_leaf":"0"},"4436":{"category_name":"ملابس نسائية","parent_ids":[],"is_leaf":"0"}}}</script>';
+  const sw = categoryPath(ci, [], 'x', 'https://ar.shein.com/x-p-28052129.html');
+  eq('نفس الاسم مرتين متتاليتين ← مرة واحدة', sw.map(n => n.name), ['ملابس نسائية', 'ملابسة منسوجة نسائية', 'سويترات نسائية']);
+  eq('…والمسار يبقى كامل', sw[2].path, ['4436', '2030', '2216', '1734']);
+  const g = fromHtml(fix('shein-productgroup.html'), 'https://us.shein.com/x-p-28052129.html');
+  eq('شي إن بلا cateInfos ← بلا تصنيف (BreadcrumbList عندهم مخربط)', g.categories, []);
+  const bc = '<html><head><title>Blue Mug</title><script type="application/ld+json">{"@type":"BreadcrumbList","itemListElement":[{"position":1,"name":"Home","item":"https://x.com/"},{"position":2,"name":"Kitchen","item":"https://x.com/k"},{"position":3,"name":"Mugs","item":"https://x.com/k/m"},{"position":4,"name":"Blue Mug","item":"https://x.com/p/1"}]}</script></head><body>' + 'x'.repeat(500) + '</body></html>';
+  eq('موقع آخر: BreadcrumbList بدون «Home» واسم المنتج', fromHtml(bc, 'https://x.com/p/1').categories.map(n => n.name), ['Kitchen', 'Mugs']);
+}
+
 console.log('\n' + (fail ? '❌ فشل ' + fail + ' / نجح ' + pass : '✅ كل الاختبارات ناجحة (' + pass + ')'));
 process.exit(fail ? 1 : 0);

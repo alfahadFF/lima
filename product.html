@@ -37,8 +37,9 @@
   if (error || !p) { root.innerHTML = empty('المنتج غير موجود أو غير متاح حالياً.'); return; }
 
   document.title = p.title + ' | ' + CONFIG.STORE_NAME;
-  const imgs = (p.product_images || []).slice().sort((a, b) => a.sort_order - b.sort_order).map(i => i.url)
-    .filter(u => !isJunkImg(u));   // خلفية شي إن الرمادية (تحميل) ليست صورة منتج
+  const imgs = (p.product_images || []).slice().sort((a, b) => a.sort_order - b.sort_order).map(i => imgTag(i.url))
+    .filter(x => !isJunkImg(x.u));   // خلفية شي إن الرمادية (تحميل) ليست صورة منتج
+  const colorImg = c => c ? imgs.findIndex(x => x.colors.includes(c)) : -1;   // صورة اللون (مثل شي إن)
   const V = p.product_variants || [];
   const uniq = a => [...new Set(a)];
   const colors = uniq(V.map(v => v.color).filter(Boolean));
@@ -64,8 +65,8 @@
     const msg = needs || (!ready ? 'هذا الخيار غير متوفر حالياً' : '');
     root.innerHTML = `
       <div class="gallery">
-        <div class="main">${img(imgs[shown], p.title)}</div>
-        ${imgs.length > 1 ? `<div class="thumbs">${imgs.map((u, i) => `<button data-img="${i}" aria-pressed="${i === shown}" aria-label="صورة ${i + 1}">${img(u)}</button>`).join('')}</div>` : ''}
+        <div class="main">${img((imgs[shown] || {}).u, p.title)}</div>
+        ${imgs.length > 1 ? `<div class="thumbs">${imgs.map((x, i) => `<button data-img="${i}" aria-pressed="${i === shown}" aria-label="${esc(x.colors[0] || 'صورة ' + (i + 1))}">${img(x.u)}</button>`).join('')}</div>` : ''}
       </div>
       <div class="info">
         <span class="tag">${esc(p.code)}</span>
@@ -86,12 +87,25 @@
   const item = () => {
     const v = current();
     return { variant_id: v.id, product_id: p.id, code: p.code, title: p.title, color: v.color, size: v.size, qty,
-      price: v.price_override ?? p.final_price, image: imgs[0] || '' };
+      price: v.price_override ?? p.final_price, image: (imgs[colorImg(sel.color)] || imgs[0] || {}).u || '' };
   };
 
   root.addEventListener('click', e => {
     const t = e.target.closest('button'); if (!t || t.disabled) return;
-    if (t.dataset.color !== undefined) { sel.color = sel.color === t.dataset.color ? null : t.dataset.color; draw(); }
+    if (t.dataset.color !== undefined) {
+      sel.color = sel.color === t.dataset.color ? null : t.dataset.color;
+      const ci = colorImg(sel.color);
+      if (ci >= 0) shown = ci;
+      draw();
+      if (ci >= 0) {
+        // صف الصور الصغيرة: نحرّكه أفقيًا فقط لصورة اللون
+        const th = root.querySelector('.thumbs [aria-pressed="true"]'), tb = root.querySelector('.thumbs');
+        if (th && tb) { const a = th.getBoundingClientRect(), c = tb.getBoundingClientRect(); tb.scrollBy({ left: (a.left + a.width / 2) - (c.left + c.width / 2), behavior: 'smooth' }); }
+        // الصورة الكبيرة مخفية فوق (على الجوال) ← نطلع لها حتى يشوف الزبون الصورة الجديدة
+        const m = root.querySelector('.gallery .main').getBoundingClientRect(), top = $('#hdr').getBoundingClientRect().bottom;
+        if (m.bottom < top + m.height * 0.4) window.scrollBy({ top: m.top - top - 8, behavior: 'smooth' });
+      }
+    }
     else if (t.dataset.size !== undefined) { sel.size = sel.size === t.dataset.size ? null : t.dataset.size; draw(); }
     else if (t.dataset.img !== undefined) { shown = +t.dataset.img; draw(); }
     else if (t.dataset.q) { qty = Math.min(20, Math.max(1, qty + +t.dataset.q)); draw(); }

@@ -13,7 +13,10 @@ const NOIMG = '<span class="noimg-store" role="img" aria-label="ليمار ست�
 function imgFail(el) { el.onerror = null; el.insertAdjacentHTML('afterend', NOIMG); el.remove(); }
 const imgOf = list => (list || []).filter(i => i && !isJunkImg(i.url)).sort((a, b) => a.sort_order - b.sort_order)[0];
 const img = (url, alt = '') => !url ? '' : isJunkImg(url) ? NOIMG
-  : `<img loading="lazy" referrerpolicy="no-referrer" src="${esc(url)}" alt="${esc(alt)}" onerror="imgFail(this)">`;
+  : `<img loading="lazy" referrerpolicy="no-referrer" src="${esc(String(url).split('#c=')[0])}" alt="${esc(alt)}" onerror="imgFail(this)">`;
+// صورة لون معيّن: «رابط#c=لون|لون» ← { u: الرابط، colors: [الألوان] }
+const dec = x => { try { return decodeURIComponent(x); } catch (e) { return x; } };
+const imgTag = raw => { const [u, t] = String(raw || '').split('#c='); return { u, colors: t ? t.split('|').map(dec).filter(Boolean) : [] }; };
 
 // وصف محفوظ من شي إن: بدون سعر شي إن وسياساتها، و«ليمار ستور» بدل شي إن (نفس منطق storeDesc في extract.js)
 function storeDesc(d) {

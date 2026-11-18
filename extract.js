@@ -302,6 +302,62 @@
     return out;
   }
 
+  /* ---------- تصنيف المنتج: رئيسي ← فرعي ← … (مثل شي إن) ----------
+     شي إن: cateInfos فيه سلسلة التصنيف الحقيقية (parent_ids من الرئيسي حتى تصنيف المنتج) بأسماء الموقع.
+     (BreadcrumbList عند شي إن ترتيبه مخربط، فما نعتمد عليه هناك.) مواقع أخرى: BreadcrumbList بالترتيب.
+     كل عقدة: { id, name, path: [المعرّفات من الرئيسي حتى العقدة] } */
+  function jsonObjectAt(s, key) {
+    const i = s.indexOf(key); if (i < 0) return null;
+    const j = s.indexOf('{', i + key.length); if (j < 0 || j - i - key.length > 4) return null;
+    let d = 0, ins = false, esc = false;
+    for (let k = j; k < Math.min(s.length, j + 200000); k++) {
+      const c = s[k];
+      if (ins) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') ins = false; continue; }
+      if (c === '"') ins = true;
+      else if (c === '{') d++;
+      else if (c === '}' && --d === 0) { try { return JSON.parse(s.slice(j, k + 1)); } catch (e) { return null; } }
+    }
+    return null;
+  }
+  const catName = (x) => decode(String(x || '')).replace(/\s+/g, ' ').trim();
+  const hashId = (x) => { let h = 5381; for (const ch of String(x)) h = ((h * 33) ^ ch.codePointAt(0)) >>> 0; return 'n' + h.toString(36); };
+
+  function categoryPath(html, blobs, title, url) {
+    let nodes = [];
+    const ci = jsonObjectAt(html, '"cateInfos"');
+    if (ci && typeof ci === 'object') {
+      const all = Object.keys(ci).filter((k) => ci[k] && typeof ci[k] === 'object');
+      const leaf = all.find((k) => String(ci[k].is_leaf) === '1')
+        || all.sort((a, b) => (ci[b].parent_ids || []).length - (ci[a].parent_ids || []).length)[0];
+      if (leaf) {
+        const ids = [].concat(ci[leaf].parent_ids || []).map(String);
+        if (ids[ids.length - 1] !== leaf) ids.push(leaf);
+        nodes = ids.map((id, i) => ({ id, name: catName((ci[id] || {}).category_name), path: ids.slice(0, i + 1) }));
+      }
+    } else if (sourceOf(url) !== 'shein') {
+      let list = null;
+      const find = (n) => {
+        if (list || !n || typeof n !== 'object') return;
+        if (Array.isArray(n)) return n.forEach(find);
+        if (n['@type'] === 'BreadcrumbList' && Array.isArray(n.itemListElement)) { list = n.itemListElement; return; }
+        for (const k in n) if (n[k] && typeof n[k] === 'object') find(n[k]);
+      };
+      for (const b of blobs) if (b.tag === 'jsonld') find(b.val);
+      const items = (list || []).slice().sort((a, b) => (a.position || 0) - (b.position || 0)).map((it) => {
+        const item = it.item && typeof it.item === 'object' ? it.item : {};
+        return { name: catName(it.name || item.name), u: String(typeof it.item === 'string' ? it.item : item['@id'] || item.url || '') };
+      }).filter((x) => x.name);
+      if (items.length && /^(home|homepage|الرئيسية|الصفحة الرئيسية|start)$/i.test(items[0].name)) items.shift();
+      const t = String(title || '').toLowerCase();
+      if (items.length && (items[items.length - 1].name.toLowerCase() === t || (url && items[items.length - 1].u === url))) items.pop();
+      const ids = [];
+      nodes = items.map((x) => { ids.push(hashId(x.name)); return { id: ids[ids.length - 1], name: x.name, path: ids.slice() }; });
+    }
+    // اسم طويل = اسم منتج مش تصنيف؛ ونفس الاسم مرتين متتاليتين (مثل «ملابس نسائية» ← «ملابس نسائية») ← مرة واحدة
+    nodes = nodes.filter((n) => n.name && n.name.length <= 60);
+    return nodes.filter((n, i) => !i || n.name !== nodes[i - 1].name).slice(0, 6);
+  }
+
   /* ---------- الواجهة الرئيسية ---------- */
 
   function fromHtml(html, url) {
@@ -378,6 +434,7 @@
       inStock: skuOut.inStock,
       skus: (ld.skus || []).length > 0 ? ld.skus : [],
       groupColor: ld.groupColor || '',
+      categories: categoryPath(html, blobs, title, url),
       confidence,
       notes,
       debug: { blobs: blobs.map((b) => b.tag), imagesFound: images.length }
@@ -646,5 +703,5 @@
     return { url: u.origin + u.pathname + (u.search ? '?' + u.searchParams.toString() : ''), source: sourceOf(u.href) };
   }
 
-  return { fromHtml, fromText, fromShare, cleanUrl, route, sourceOf, tidyTitle, tidyImage, storeDesc, version: '1.5.0' };
+  return { fromHtml, fromText, fromShare, cleanUrl, route, sourceOf, tidyTitle, tidyImage, storeDesc, categoryPath, version: '1.6.0' };
 }));

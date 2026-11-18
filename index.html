@@ -23,7 +23,7 @@
   <p class="note" id="note" hidden></p>
   <div class="tools">
     <input class="in" id="q" type="search" placeholder="ابحث بالاسم أو بالكود" aria-label="بحث">
-    <div class="chips" id="chips" role="group" aria-label="الفئات"></div>
+    <div class="cats" id="chips"></div>
   </div>
   <div class="grid" id="grid"></div>
 </main>
@@ -41,22 +41,38 @@
   const [p, c] = await Promise.all([
     sb.from('products').select('id,code,title,final_price,category_id,product_images(url,sort_order)')
       .eq('status', 'published').order('created_at', { ascending: false }).limit(300),
-    sb.from('categories').select('id,name').order('sort_order').order('name')
+    sb.from('categories').select('id,name,slug').order('sort_order').order('name')
   ]);
   if (p.error || c.error) { grid.innerHTML = empty('تعذر تحميل المنتجات. حاول مرة ثانية.'); return; }
 
   const all = p.data, cats = c.data;
-  let cat = '', q = '';
+  let path = [], q = '';   // path: الفئات المختارة من الرئيسية للفرعية
+
+  // فئات شجرية مثل شي إن: الـ slug «t-3631-1765-…» = مسار التصنيف، والأب = أقرب مسار أقصر موجود
+  const bySlug = new Map(cats.map(x => [x.slug, x]));
+  const parent = new Map(cats.map(x => {
+    const m = /^t-([\w-]+)$/.exec(x.slug || ''); if (!m) return [x.id, null];
+    const ids = m[1].split('-');
+    for (let i = ids.length - 1; i > 0; i--) { const pr = bySlug.get('t-' + ids.slice(0, i).join('-')); if (pr) return [x.id, pr.id]; }
+    return [x.id, null];
+  }));
+  const inside = (catId, id) => { for (let x = catId, n = 0; x && n < 12; x = parent.get(x), n++) if (x === id) return true; return false; };
+  const has = id => all.some(x => inside(x.category_id, id));
 
   function chips() {
-    const used = new Set(all.map(x => x.category_id));
-    const list = cats.filter(x => used.has(x.id));
-    $('#chips').innerHTML = list.length
-      ? [{ id: '', name: 'الكل' }, ...list].map(x => `<button class="chip" data-cat="${x.id}" aria-pressed="${x.id === cat}">${esc(x.name)}</button>`).join('')
-      : '';
+    const rows = [];
+    for (let d = 0; d <= path.length; d++) {
+      const list = cats.filter(x => (parent.get(x.id) || null) === (d ? path[d - 1] : null) && has(x.id));
+      if (!list.length) break;
+      rows.push(`<div class="chips${d ? ' sub' : ''}" role="group" aria-label="${d ? 'أقسام فرعية' : 'الفئات'}">`
+        + (d ? list : [{ id: '', name: 'الكل' }, ...list]).map(x =>
+          `<button class="chip" data-cat="${x.id}" data-depth="${d}" aria-pressed="${x.id === (path[d] || '')}">${esc(x.name)}</button>`).join('') + '</div>');
+    }
+    $('#chips').innerHTML = rows.length ? rows.join('') : '';
   }
   function render() {
-    const list = all.filter(x => (!cat || x.category_id === cat) && (!q || (x.title + ' ' + x.code).toLowerCase().includes(q)));
+    const cat = path[path.length - 1];
+    const list = all.filter(x => (!cat || inside(x.category_id, cat)) && (!q || (x.title + ' ' + x.code).toLowerCase().includes(q)));
     grid.innerHTML = list.length ? list.map(x => {
       const im = imgOf(x.product_images);
       return `<a class="item" href="product.html?c=${encodeURIComponent(x.code)}">
@@ -66,7 +82,9 @@
   }
   $('#chips').addEventListener('click', e => {
     const b = e.target.closest('[data-cat]'); if (!b) return;
-    cat = b.dataset.cat; chips(); render();
+    const d = +b.dataset.depth, id = b.dataset.cat;
+    path = id && path[d] !== id ? [...path.slice(0, d), id] : path.slice(0, d);   // نقرة على المختار = رجوع للقسم الأعلى
+    chips(); render();
   });
   $('#q').addEventListener('input', e => { q = e.target.value.trim().toLowerCase(); render(); });
   chips(); render();

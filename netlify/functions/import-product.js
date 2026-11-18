@@ -11,7 +11,7 @@
 //     → نأخذ الرقم ونجلب صفحة المنتج: ar.shein.com أولًا (متجر عربي) ثم us.shein.com (منتجات غير متوفرة في موقع).
 // تيمو: الصفحة تُرجع العنوان ووسوم meta، والسعر والألوان تُحمّل بالجافاسكربت → استخراج جزئي.
 
-const { fromHtml, cleanUrl, sourceOf } = require('../../extract.js');
+const { fromHtml, cleanUrl, sourceOf, tidyImage } = require('../../extract.js');
 
 // مفتاح anon علني بطبيعته (نفسه الموجود في config.js) — يُستخدم فقط للتحقق من جلسة الأدمن.
 const SB_URL = process.env.SUPABASE_URL || 'https://gvbogfyfmkohepmukqmw.supabase.co';
@@ -152,7 +152,8 @@ function sheinPatterns(html, curId) {
     const id = String((x && x.goods_id) || ''), name = String((x && x.attr_value) || '').trim();
     if (!/^\d{5,}$/.test(id) || !name || out.some(p => p.id === id)) continue;
     count[name] = (count[name] || 0) + 1;                       // نقشتان بنفس الاسم ← «الاسم (2)» حتى يختار الزبون بينهما
-    out.push({ id, name: count[name] > 1 ? name + ' (' + count[name] + ')' : name });
+    // صورة النقشة الرئيسية: هي اللي بتتبدّل لها الصورة لما الزبون يختار النقشة (مثل شي إن)
+    out.push({ id, name: count[name] > 1 ? name + ' (' + count[name] + ')' : name, img: tidyImage(x.goods_image) || null });
   }
   return out;
 }
@@ -187,9 +188,11 @@ async function sheinOptions(page, data, extra, timeLeft) {
     }));
     got.forEach(g => { if (g) pages.push(g); });
   }
-  const skus = [], owner = new Map();
+  const skus = [], owner = new Map(), colorImages = {};
+  const imgOf = {}; pats.forEach(p => { if (p.img) imgOf[p.name] = p.img; });
   for (const { name, d } of pages) {
     const pattern = name || d.groupColor || (d.colors || [])[0] || null;
+    const pimg = imgOf[name] || (d.images || [])[0] || null;
     const list = (d.skus || []).length ? d.skus : [{ color: null, size: null, price: d.price, inStock: true }];
     for (const v of list) {
       // خيار باسم خاص داخل النقشة (مثل «لون العدسات») ← اسمه، وإلا اسم النقشة
@@ -199,9 +202,10 @@ async function sheinOptions(page, data, extra, timeLeft) {
       if (owner.has(k())) continue;
       owner.set(k(), pattern);
       skus.push({ color: color || null, size: v.size || null, price: v.price != null ? v.price : d.price, inStock: v.inStock !== false });
+      if (color && pimg && pats.length > 1) colorImages[color] = pimg;
     }
   }
-  return { skus, total: Math.max(1, pats.length), priced: pages.length };
+  return { skus, total: Math.max(1, pats.length), priced: pages.length, colorImages };
 }
 
 // تصنيف ما وصل إلينا: صفحة منتج حقيقية / تحقق بشري / حجب صريح
@@ -301,6 +305,7 @@ exports.handler = async (event) => {
         data.colors = uniq(op.skus.map(v => v.color));
         data.sizes = uniq(op.skus.map(v => v.size));
         data.patterns = { total: op.total, priced: op.priced };
+        if (new Set(Object.values(op.colorImages)).size > 1) data.colorImages = op.colorImages;
       }
     }
 

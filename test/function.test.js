@@ -199,11 +199,16 @@ const call = (qs, headers = { authorization: 'Bearer tok' }) =>
       ['متعدد الألوان', null, 13.18, true], ['قطعتين (رمادي ذهبي + شاي ذهبي)', null, 15.17, true],
       ['أوراق الشاي بإطار ذهبي', null, 10.11, false], ['إطار فضي قطعة رمادية', null, 10.11, true]]);
     eq('الألوان = أسماء الخيارات', r.body.colors.length, 4);
+    eq('صورة كل نقشة لخياراتها', Object.keys(r.body.colorImages), ['متعدد الألوان', 'قطعتين (رمادي ذهبي + شاي ذهبي)', 'أوراق الشاي بإطار ذهبي', 'إطار فضي قطعة رمادية']);
+    ok('صورتان مختلفتان (نقشة لكل صورة)', new Set(Object.values(r.body.colorImages)).size === 2 && r.body.colorImages['أوراق الشاي بإطار ذهبي'] === r.body.colorImages['إطار فضي قطعة رمادية'], JSON.stringify(r.body.colorImages));
+    ok('الصور بالحجم الكامل (بدون _thumbnail_405x552)', Object.values(r.body.colorImages).every(u => /^https:\/\/img\.ltwebstatic\.com\//.test(u) && !/thumbnail_405x552/.test(u)), JSON.stringify(r.body.colorImages));
+    eq('التصنيف يوصل للوحة', r.body.categories.map(n => n.name), ['ملابس واكسسوارات', 'اكسسوارات نسائية', 'نظارات نسائية وإكسسوارات نظارات', 'نظارات شمسية نسائية']);
     eq('السعر الأساسي = النقشة المشارَكة', r.body.price, 13.18);
 
     asked = []; failB = true;
     r = await call({ url: 'https://ar.shein.com/x-p-453530243.html' });
     eq('نقشة ما وصلت ← ما تنضاف بسعر غلط', [r.body.ok, r.body.patterns, r.body.skus.length], [true, { total: 2, priced: 1 }, 1]);
+    eq('…ولا صورة ألوان لنقشة وحدة', r.body.colorImages, undefined);
 
     asked = [];
     global.fetch = async (url) => {

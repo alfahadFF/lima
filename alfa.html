@@ -85,7 +85,7 @@
       <div class="field"><label for="f-url">رابط المصدر (أو كود cj:)</label><input class="in" id="f-url" type="url" dir="ltr"></div>
       <div class="two">
         <div class="field"><label for="f-price">سعر شي إن</label><input class="in" id="f-price" type="number" step="0.01" min="0" inputmode="decimal"></div>
-        <div class="field"><label for="f-margin">الهامش %</label><input class="in" id="f-margin" type="number" step="0.5" min="0" inputmode="decimal" value="30"></div>
+        <div class="field"><label for="f-margin">الزيادة على السعر ($)</label><input class="in" id="f-margin" type="number" step="0.01" min="0" inputmode="decimal" value="0.70"></div>
       </div>
       <div class="field"><label for="f-final">سعر البيع</label><input class="in" id="f-final" readonly></div>
       <div class="two">
@@ -122,6 +122,20 @@
 <script>
 const ST = { draft: 'مسودة', published: 'منشور', hidden: 'مخفي' };
 let wasIn = false, cats = [], products = [], editing = null, variants = [];
+let pendingCat = null;   // تصنيف شي إن للمنتج المستورد (رئيسي ← فرعي ← …) — يُنشأ عند الحفظ إذا مش موجود
+
+/* الزيادة على سعر شي إن مبلغ ثابت (0.70$). «سعر البيع» في قاعدة البيانات عمود محسوب من نسبة:
+   final_price = shein_price × (1 + margin_percent/100) ← نرسل النسبة اللي بتعطي «سعر شي إن + الزيادة» بالضبط */
+const MARKUP = 0.70;
+const r2 = n => Math.round(n * 100) / 100;
+function percentFor(price, add) {
+  if (!(price > 0)) return 0;
+  const pc = Math.round(price * 100), want = Math.round((price + add) * 100);
+  const finalOf = mh => Math.floor((pc * (10000 + mh) + 5000) / 10000);   // نفس تقريب قاعدة البيانات (بالسنت)
+  const base = Math.round(add / price * 1e4);                              // النسبة × 100
+  for (const d of [0, -1, 1, -2, 2, -3, 3]) if (finalOf(base + d) === want) return (base + d) / 100;
+  return Math.round(add / price * 100 * 1e6) / 1e6;
+}
 const split = s => [...new Set(String(s || '').split(/[,،\n]+/).map(x => x.trim()).filter(Boolean))];
 
 /* ---------- الدخول ---------- */
@@ -160,8 +174,47 @@ async function loadCats() {
   const { data, error } = await sb.from('categories').select('*').order('sort_order').order('name');
   if (error) return toast(error.message);
   cats = data;
-  $('#f-cat').innerHTML = '<option value="">بدون فئة</option>' + cats.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
-  $('#catlist').innerHTML = cats.map(c => `<div class="crow"><span>${esc(c.name)}</span><button class="btn sm bad" data-delcat="${c.id}">حذف</button></div>`).join('') || empty('لا توجد فئات.');
+  const lab = cats.map(c => ({ c, l: catLabel(c) })).sort((a, b) => a.l.localeCompare(b.l, 'ar'));
+  const keep = $('#f-cat').value;
+  $('#f-cat').innerHTML = '<option value="">بدون فئة</option>' + lab.map(x => `<option value="${x.c.id}">${esc(x.l)}</option>`).join('');
+  if (pendingCat) setAutoCat(pendingCat, keep); else if ([...$('#f-cat').options].some(o => o.value === keep)) $('#f-cat').value = keep;
+  $('#catlist').innerHTML = lab.map(x => `<div class="crow"><span style="padding-inline-start:${(x.l.split(' › ').length - 1) * 18}px">${x.l.includes(' › ') ? '↳ ' : ''}${esc(x.c.name)}</span><button class="btn sm bad" data-delcat="${x.c.id}">حذف</button></div>`).join('') || empty('لا توجد فئات.');
+}
+/* فئات شجرية مثل شي إن بدون تغيير قاعدة البيانات: الـ slug يحمل مسار التصنيف «t-3631-1765-2841-3927»،
+   والفئة الأب = أقرب مسار أقصر موجود */
+function catParent(c) {
+  const m = /^t-([\w-]+)$/.exec(c.slug || ''); if (!m) return null;
+  const ids = m[1].split('-');
+  for (let i = ids.length - 1; i > 0; i--) { const p = cats.find(x => x.slug === 't-' + ids.slice(0, i).join('-')); if (p) return p; }
+  return null;
+}
+function catLabel(c) { const n = [c.name]; for (let p = catParent(c), i = 0; p && i < 8; p = catParent(p), i++) n.unshift(p.name); return n.join(' › '); }
+function setAutoCat(nodes, keep) {
+  pendingCat = (nodes || []).length ? nodes : null;
+  const sel = $('#f-cat'), old = sel.querySelector('option[value="__auto__"]'); if (old) old.remove();
+  if (!pendingCat) return;
+  const leaf = pendingCat[pendingCat.length - 1], have = cats.find(c => c.slug === 't-' + leaf.path.join('-'));
+  if (!have) sel.insertAdjacentHTML('beforeend', `<option value="__auto__">${esc(pendingCat.map(n => n.name).join(' › '))} (جديدة)</option>`);
+  sel.value = keep && keep !== '__auto__' && [...sel.options].some(o => o.value === keep) ? keep : have ? have.id : '__auto__';
+}
+// إنشاء التصنيف وأقسامه الرئيسية (الناقص منها فقط) ← معرّف القسم الأخير
+async function ensureCatPath(nodes) {
+  let id = null, parentName = '';
+  for (const n of nodes) {
+    const slug = 't-' + n.path.join('-');
+    let c = cats.find(x => x.slug === slug);
+    if (!c) {
+      let r = await sb.from('categories').insert({ name: n.name, slug, sort_order: cats.length }).select('*').single();
+      if (r.error && r.error.code === '23505') {   // موجود للتو، أو الاسم مكرر بقسم ثاني
+        const ex = await sb.from('categories').select('*').eq('slug', slug).maybeSingle();
+        r = ex.data ? ex : await sb.from('categories').insert({ name: n.name + ' - ' + parentName, slug, sort_order: cats.length }).select('*').single();
+      }
+      if (r.error) throw r.error;
+      c = r.data; cats.push(c);
+    }
+    id = c.id; parentName = n.name;
+  }
+  return id;
 }
 $('#addcat').addEventListener('click', async () => {
   const name = $('#cname').value.trim(); if (!name) return;
@@ -220,7 +273,7 @@ $('#plist').addEventListener('click', async e => {
 /* ---------- النموذج ---------- */
 function calcFinal() {
   const p = parseFloat($('#f-price').value) || 0, m = parseFloat($('#f-margin').value) || 0;
-  $('#f-final').value = money(Math.round(p * (1 + m / 100) * 100) / 100);
+  $('#f-final').value = money(r2(p + m));
 }
 ['f-price', 'f-margin'].forEach(id => $('#' + id).addEventListener('input', calcFinal));
 
@@ -232,7 +285,7 @@ function resetForm() {
   // نمرّ على العناصر الموجودة فقط — أي حقل محذوف لا يوقف الدالة
   ['f-title', 'f-url', 'f-price', 'f-desc', 'f-images', 'f-colors', 'f-sizes', 'imp-html', 'one']
     .forEach(id => { const el = $('#' + id); if (el) el.value = ''; });
-  $('#f-margin').value = 30; $('#f-cat').value = ''; $('#f-status').value = 'draft';
+  $('#f-margin').value = MARKUP.toFixed(2); setAutoCat(null); $('#f-cat').value = ''; $('#f-status').value = 'draft';
   $('#ftitle').textContent = 'منتج جديد'; $('#tabform').textContent = 'منتج جديد'; $('#del').hidden = true;
   renderVariants(); calcFinal();
 }
@@ -250,14 +303,14 @@ function genVariants() {
   optionPrices();
   renderVariants();
 }
-/* سعر كل خيار تلقائيًا: كل نقشة/خيار في شي إن له سعره (src) ← السعر الخاص = سعره × (1 + الهامش).
+/* سعر كل خيار تلقائيًا: كل نقشة/خيار في شي إن له سعره (src) ← السعر الخاص = سعره + الزيادة.
    الخيار اللي سعره نفس السعر الأساسي يبقى بدون سعر خاص. تعديلك اليدوي لا يُلمس. */
 function optionPrices() {
   const base = parseFloat($('#f-price').value), m = parseFloat($('#f-margin').value) || 0;
   if (!(base >= 0)) return;
   variants.forEach(v => {
     if (v.src == null || v.manual) return;
-    v.price_override = Math.abs(v.src - base) > 0.005 ? Math.round(v.src * (1 + m / 100) * 100) / 100 : null;
+    v.price_override = Math.abs(v.src - base) > 0.005 ? r2(v.src + m) : null;
   });
 }
 ['f-price', 'f-margin'].forEach(id => $('#' + id).addEventListener('input', () => {
@@ -303,7 +356,8 @@ function applyImport(j) {
   if (j.url || j.source_url) $('#f-url').value = j.url || j.source_url;
   $('#f-price').value = j.price == null ? '' : j.price;
   $('#f-desc').value = j.description || '';
-  $('#f-images').value = (j.images || []).join('\n');
+  $('#f-images').value = tagColorImages(j.images || [], j.colorImages).join('\n');
+  setAutoCat(j.categories);
   $('#f-colors').value = (j.colors || []).join('، ');
   $('#f-sizes').value = (j.sizes || []).join('، ');
   variants = [];
@@ -326,6 +380,23 @@ function applyImport(j) {
   $('#one-msg').textContent = 'تمت التعبئة — ' + bits.join(' · ') + (cur && cur !== 'USD' ? ' · السعر بـ' + cur : '');
   toast('تمت التعبئة ✓');
   $('#f-title').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+/* صورة كل نقشة: نعلّم الصورة بأسماء ألوانها «رابط#c=لون|لون» — المتجر يبدّل الصورة لما الزبون يختار اللون (مثل شي إن).
+   العلامة بعد # ما بتنرسل لسيرفر الصور، فالصورة تتحمّل عادي. */
+function tagColorImages(images, colorImages) {
+  const key = u => String(u).split('#')[0].split('?')[0].replace(/_thumbnail_[^.\/]*/i, '').replace(/\.(jpe?g|png|webp|avif|gif)$/i, '').toLowerCase();
+  const lines = images.slice(), groups = new Map();
+  Object.entries(colorImages || {}).forEach(([color, u]) => {
+    if (!u || !color) return;
+    const k = key(u); if (!groups.has(k)) groups.set(k, { u, colors: [] });
+    groups.get(k).colors.push(color);
+  });
+  groups.forEach((g, k) => {
+    const i = lines.findIndex(x => key(x) === k), tag = '#c=' + g.colors.join('|');
+    if (i >= 0) lines[i] = lines[i].split('#')[0] + tag; else lines.push(g.u + tag);
+  });
+  return lines;
 }
 
 function previewImport(j) {
@@ -469,7 +540,8 @@ async function cjImport(pid, btn) {
     $('#f-price').value = base ?? ''; $('#f-images').value = (p.images || []).join('\n');
     variants = (p.variants || []).map(v => ({
       color: v.color, size: v.size, in_stock: v.stock == null ? true : v.stock > 0,
-      price_override: (v.price != null && base != null && v.price - base > 0.005) ? Math.round(v.price * (1 + margin / 100) * 100) / 100 : null
+      price_override: (v.price != null && base != null && Math.abs(v.price - base) > 0.005) ? r2(v.price + margin) : null,
+      src: v.price != null ? v.price : undefined, manual: false
     }));
     $('#f-colors').value = [...new Set(variants.map(v => v.color).filter(Boolean))].join('، ');
     $('#f-sizes').value = [...new Set(variants.map(v => v.size).filter(Boolean))].join('، ');
@@ -494,10 +566,12 @@ async function edit(id) {
   if (error) return toast(error.message);
   resetForm(); editing = id;
   $('#f-title').value = p.title; $('#f-url').value = p.source_url || ''; $('#f-price').value = p.shein_price;
-  $('#f-margin').value = p.margin_percent; $('#f-cat').value = p.category_id || ''; $('#f-status').value = p.status;
+  const m0 = p.final_price != null && p.shein_price != null ? r2(p.final_price - p.shein_price) : MARKUP;
+  $('#f-margin').value = m0.toFixed(2); $('#f-cat').value = p.category_id || ''; $('#f-status').value = p.status;
   $('#f-desc').value = p.description || '';
   $('#f-images').value = p.product_images.sort((a, b) => a.sort_order - b.sort_order).map(i => i.url).join('\n');
-  variants = p.product_variants.map(v => ({ color: v.color, size: v.size, in_stock: v.in_stock, price_override: v.price_override }));
+  variants = p.product_variants.map(v => ({ color: v.color, size: v.size, in_stock: v.in_stock, price_override: v.price_override,
+    src: v.price_override != null ? r2(v.price_override - m0) : undefined, manual: false }));
   $('#f-colors').value = [...new Set(variants.map(v => v.color).filter(Boolean))].join('، ');
   $('#f-sizes').value = [...new Set(variants.map(v => v.size).filter(Boolean))].join('، ');
   renderVariants(); calcFinal();
@@ -509,17 +583,22 @@ async function save() {
   const title = $('#f-title').value.trim(), price = parseFloat($('#f-price').value);
   if (!title || !(price >= 0)) return toast('الاسم والسعر مطلوبان');
   if (fieldsDirty || !variants.length) genVariants();
+  const add = parseFloat($('#f-margin').value) || 0, want = r2(price + add);
   const row = {
     title, source_url: $('#f-url').value.trim() || null, shein_price: price,
-    margin_percent: parseFloat($('#f-margin').value) || 0, category_id: $('#f-cat').value || null,
+    margin_percent: percentFor(price, add), category_id: $('#f-cat').value || null,
     description: $('#f-desc').value.trim() || null, status: $('#f-status').value
   };
   const btn = $('#save'); btn.disabled = true;
   try {
-    const q = editing ? sb.from('products').update(row).eq('id', editing) : sb.from('products').insert(row);
-    const { data, error } = await q.select('id,code').single();
+    if (row.category_id === '__auto__') row.category_id = pendingCat ? await ensureCatPath(pendingCat) : null;
+    const write = () => (editing ? sb.from('products').update(row).eq('id', editing) : sb.from('products').insert(row)).select('id,code,final_price').single();
+    let { data, error } = await write();
+    if (error && error.code === '22P02' && /integer/i.test(error.message || '')) { row.margin_percent = Math.round(row.margin_percent); ({ data, error } = await write()); }
     if (error) throw error;
     const id = data.id;
+    // لو قاعدة البيانات قرّبت السعر لغير «سعر شي إن + الزيادة» (نادر، فوق 100$) ← نثبّت السعر الصحيح على الخيارات
+    if (data.final_price != null && Math.abs(data.final_price - want) > 0.004) variants.forEach(v => { if (v.price_override == null) v.price_override = want; });
     let r = await sb.from('product_images').delete().eq('product_id', id); if (r.error) throw r.error;
     r = await sb.from('product_variants').delete().eq('product_id', id); if (r.error) throw r.error;
     const imgs = $('#f-images').value.split('\n').map(x => x.trim()).filter(Boolean);
@@ -527,7 +606,7 @@ async function save() {
     r = await sb.from('product_variants').insert(variants.map(v => ({ product_id: id, color: v.color, size: v.size, in_stock: v.in_stock, price_override: v.price_override })));
     if (r.error) throw r.error;
     toast('تم الحفظ. الكود: ' + data.code);
-    await loadProducts(); resetForm(); tab('products');
+    await loadProducts(); resetForm(); tab('products'); loadCats();
   } catch (e) { toast(e.message || 'تعذر الحفظ'); }
   finally { btn.disabled = false; }
 }
