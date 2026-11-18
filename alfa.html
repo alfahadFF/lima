@@ -39,7 +39,8 @@
     </nav>
 
     <div id="t-products">
-      <div class="tools"><input class="in" id="q" type="search" placeholder="ابحث بالكود أو الاسم" aria-label="بحث"></div>
+      <div class="tools"><input class="in" id="q" type="search" placeholder="ابحث بالكود أو الاسم" aria-label="بحث">
+        <div><button class="btn sm ghost" id="refresh" type="button">تحديث المنتجات من شي إن</button> <span class="muted" id="refresh-msg"></span></div></div>
       <div id="plist"></div>
     </div>
 
@@ -611,6 +612,60 @@ async function save() {
   finally { btn.disabled = false; }
 }
 $('#save').addEventListener('click', save);
+
+/* ---------- تحديث المنتجات المحفوظة من شي إن (بنفس الكود) ----------
+   صورة كل لون/نقشة + سعر كل خيار (سعر شي إن + الزيادة) + المخزون + الفئة. الكود والاسم والوصف والحالة ما بتتغير.
+   أي منتج ما انجلب كامل (فشل، نقشة ناقصة، عملة غير الدولار) ← ما بينلمس وبينذكر بالنتيجة. */
+async function fetchImport(url) {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) throw new Error('سجّل الدخول أولاً');
+  const r = await fetch('/.netlify/functions/import-product?url=' + encodeURIComponent(url), { headers: { Authorization: 'Bearer ' + session.access_token } });
+  return r.json().catch(() => ({}));
+}
+function importVariants(j, base, add) {
+  const over = x => x != null && Math.abs(x - base) > 0.005 ? r2(x + add) : null;
+  if ((j.skus || []).length) return j.skus.map(v => ({ color: v.color || null, size: v.size || null, in_stock: v.inStock !== false, price_override: over(v.price) }));
+  const C = (j.colors || []).length ? j.colors : [null], S = (j.sizes || []).length ? j.sizes : [null], out = new Set(j.soldOut || []);
+  return C.flatMap(c => S.map(z => ({ color: c, size: z, in_stock: !(z && out.has(z)), price_override: null })));
+}
+async function refreshOne(p) {
+  const partial = x => x.patterns && x.patterns.priced < x.patterns.total;
+  let j = await fetchImport(p.source_url);
+  if (!j.ok || partial(j)) j = await fetchImport(p.source_url);   // محاولة ثانية
+  if (!j.ok || j.price == null) throw new Error('ما انجلب');
+  if (partial(j)) throw new Error('نقشات ناقصة');
+  if (String(j.currency || 'USD').toUpperCase() !== 'USD') throw new Error('السعر مش بالدولار');
+  const imgs = tagColorImages(j.images || [], j.colorImages);
+  if (!imgs.length) throw new Error('بلا صور');
+  const price = j.price, want = r2(price + MARKUP), vs = importVariants(j, price, MARKUP);
+  const row = { shein_price: price, margin_percent: percentFor(price, MARKUP) };
+  if ((j.categories || []).length) row.category_id = await ensureCatPath(j.categories);
+  const write = () => sb.from('products').update(row).eq('id', p.id).select('id,final_price').single();
+  let { data, error } = await write();
+  if (error && error.code === '22P02' && /integer/i.test(error.message || '')) { row.margin_percent = Math.round(row.margin_percent); ({ data, error } = await write()); }
+  if (error) throw error;
+  if (data.final_price != null && Math.abs(data.final_price - want) > 0.004) vs.forEach(v => { if (v.price_override == null) v.price_override = want; });
+  let r = await sb.from('product_images').delete().eq('product_id', p.id); if (r.error) throw r.error;
+  r = await sb.from('product_images').insert(imgs.map((url, i) => ({ product_id: p.id, url, sort_order: i }))); if (r.error) throw r.error;
+  r = await sb.from('product_variants').delete().eq('product_id', p.id); if (r.error) throw r.error;
+  r = await sb.from('product_variants').insert(vs.map(v => ({ product_id: p.id, ...v }))); if (r.error) throw r.error;
+}
+$('#refresh').addEventListener('click', async () => {
+  if (editing) return toast('أنهِ تعديل المنتج الحالي أولاً');
+  const list = products.filter(p => /^https?:\/\//i.test(p.source_url || '') && Extract.sourceOf(p.source_url) === 'shein');
+  if (!list.length) return toast('ما في منتجات من شي إن');
+  if (!confirm('تحديث ' + list.length + ' منتج من شي إن؟\nصورة كل لون، الأسعار (سعر شي إن + ' + MARKUP.toFixed(2) + '$)، المخزون والفئات.\nالكود والاسم والوصف والحالة ما بيتغيروا.')) return;
+  const btn = $('#refresh'), msg = $('#refresh-msg'), bad = [];
+  btn.disabled = true;
+  for (const [i, p] of list.entries()) {
+    msg.textContent = 'جاري التحديث ' + (i + 1) + '/' + list.length + ': ' + p.code + '…';
+    try { await refreshOne(p); } catch (e) { bad.push(p.code + ' (' + (e.message || 'فشل') + ')'); }
+  }
+  btn.disabled = false;
+  await loadCats(); await loadProducts();
+  msg.textContent = 'تم تحديث ' + (list.length - bad.length) + ' من ' + list.length + (bad.length ? ' — ما تحدّث: ' + bad.join('، ') : ' ✓');
+  toast(msg.textContent);
+});
 $('#cancel').addEventListener('click', () => { resetForm(); tab('products'); });
 $('#del').addEventListener('click', async () => {
   if (!editing || !confirm('حذف المنتج نهائياً؟')) return;

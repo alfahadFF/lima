@@ -227,10 +227,7 @@ exports.handler = async (event) => {
   try {
     if (event.httpMethod !== 'GET') return reply(405, { error: 'method not allowed' });
     const h = event.headers || {};
-    // مؤقت (فحص ذاتي على Netlify، رابطين ثابتين فقط) — ينحذف بالتحديث التالي
-    const st0 = event.queryStringParameters || {};
-    const selftest = st0.selftest === 'st-d1oEz7kK080b' && ['https://ar.shein.com/x-p-20832643.html', 'https://ar.shein.com/x-p-453530243.html'].includes(st0.url);
-    if (!selftest && !(await isSignedIn(h.authorization || h.Authorization))) return reply(401, { error: 'سجّل الدخول أولاً' });
+    if (!(await isSignedIn(h.authorization || h.Authorization))) return reply(401, { error: 'سجّل الدخول أولاً' });
 
     const q = event.queryStringParameters || {};
     const cleaned = cleanUrl(q.url);
