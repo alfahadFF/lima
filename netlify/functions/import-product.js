@@ -151,20 +151,6 @@ const HINTS = {
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== 'GET') return reply(405, { error: 'method not allowed' });
-    // فحص مؤقت من خوادم Netlify: منتج ثابت + رابط مشاركة ثابت، يرجع ملخصًا فقط (لا يقبل أي رابط من الخارج)
-    if ((event.queryStringParameters || {}).selftest === '1') {
-      const t = Date.now(), X = { Cookie: 'currency=USD' }, out = {};
-      try {
-        const p = await fetchPage('https://ar.shein.com/x-p-28052129.html', UA_PREVIEW, 7000, X);
-        out.kind = classify(p.html, p.finalUrl);
-        const d = out.kind === 'ok' ? fromHtml(p.html, p.finalUrl) : null;
-        Object.assign(out, { title: !!(d && d.title), price: d && d.price, currency: d && d.currency, images: d ? d.images.length : 0, sizes: d ? d.sizes.length : 0, colors: d ? d.colors.length : 0 });
-        const o = await fetchPage('https://onelink.shein.com/48/5zhbyaow0j0l?shc=2_RpjwZgpn7rS', UA_PREVIEW, 2500).catch(() => null);
-        out.onelinkId = o ? shareGoodsId(o.html) : '';
-      } catch (e) { out.error = e.message; }
-      out.ms = Date.now() - t;
-      return reply(200, out);
-    }
     const h = event.headers || {};
     if (!(await isSignedIn(h.authorization || h.Authorization))) return reply(401, { error: 'سجّل الدخول أولاً' });
 
